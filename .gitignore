@@ -1,0 +1,37 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
+
+# ローカル開発用(パスワードを含む・動作確認用DB)
+/database/sql/setup-local-mysql.sql
+/database/*.sqlite
+/.claude/
+/composer.phar
+/composer-setup.php
+/storage/backups/
+# ロゴ案などの作業用ファイル
+/output/

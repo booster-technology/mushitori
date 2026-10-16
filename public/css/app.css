@@ -1,0 +1,602 @@
+/* =========================================================
+   ムシトリ 共通スタイル(Bootstrap 5.3 の上書き・追加)
+   ========================================================= */
+
+:root {
+    /* 文字のフォント: 同梱の Noto Sans JP(public/vendor/noto-sans-jp)。読み込み中や読み込めない場合は端末の標準フォントで表示する */
+    --bs-font-sans-serif: "Noto Sans JP Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+    /* テーマカラーの初期値。実際の値は .env の APP_THEME_COLOR から計算し、/theme.css で上書きする(App\Support\ThemeColor) */
+    --mt-primary: #0D223A;
+    --mt-primary-hover: #1c3a5c;
+    --mt-primary-active: #081627;
+    --mt-primary-rgb: 13, 34, 58;
+    /* テーマカラーの上に載せる文字色(明るいテーマカラーなら黒になる) */
+    --mt-on-primary: #FFFFFF;
+    /* リンク・フォーカス用。テーマカラーから、白背景で読めて本文の黒とも見分けられる濃さに調整した色 */
+    --mt-link: #1E4E85;
+    --mt-link-rgb: 30, 78, 133;
+    /* 社内用画面のヘッダー(お客様用と同じブラウザで開いても区別できるよう、チャコール+アンバーの線) */
+    --mt-staff-nav: #2b2f36;
+    --mt-staff-accent: #f0a500;
+    --mt-bg: #f3f5f7;
+
+    /* 課題の状態の色 */
+    --mt-status-open: #e07b6f;
+    --mt-status-in_progress: #4a8fd6;
+    --mt-status-resolved: #3fae8f;
+    --mt-status-closed: #9aa3ad;
+
+    /* 課題の種別の色 */
+    --mt-type-bug: #d9534f;
+    --mt-type-request: #3b7ddd;
+    --mt-type-question: #8a63d2;
+    --mt-type-other: #6c757d;
+
+    --bs-link-color: var(--mt-link);
+    --bs-link-color-rgb: var(--mt-link-rgb);
+    --bs-link-hover-color: var(--mt-primary);
+    --bs-link-hover-color-rgb: var(--mt-primary-rgb);
+    --bs-primary: var(--mt-primary);
+    --bs-primary-rgb: var(--mt-primary-rgb);
+}
+
+body {
+    background: var(--mt-bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1 0 auto;
+}
+
+.min-w-0 {
+    min-width: 0;
+}
+
+/* ---------- ボタン(プライマリをブランド色に) ---------- */
+.btn-primary {
+    --bs-btn-color: var(--mt-on-primary);
+    --bs-btn-hover-color: var(--mt-on-primary);
+    --bs-btn-active-color: var(--mt-on-primary);
+    --bs-btn-disabled-color: var(--mt-on-primary);
+    --bs-btn-bg: var(--mt-primary);
+    --bs-btn-border-color: var(--mt-primary);
+    --bs-btn-hover-bg: var(--mt-primary-hover);
+    --bs-btn-hover-border-color: var(--mt-primary-hover);
+    --bs-btn-active-bg: var(--mt-primary-active);
+    --bs-btn-active-border-color: var(--mt-primary-active);
+    --bs-btn-focus-shadow-rgb: var(--mt-link-rgb);
+    --bs-btn-disabled-bg: var(--mt-primary);
+    --bs-btn-disabled-border-color: var(--mt-primary);
+}
+
+.btn-outline-primary {
+    --bs-btn-color: var(--mt-primary);
+    --bs-btn-border-color: var(--mt-primary);
+    --bs-btn-hover-color: var(--mt-on-primary);
+    --bs-btn-hover-bg: var(--mt-primary);
+    --bs-btn-hover-border-color: var(--mt-primary);
+    --bs-btn-active-color: var(--mt-on-primary);
+    --bs-btn-active-bg: var(--mt-primary);
+}
+
+.text-primary {
+    color: var(--mt-primary) !important;
+}
+
+.nav-pills {
+    --bs-nav-pills-link-active-bg: var(--mt-primary);
+    --bs-nav-pills-link-active-color: var(--mt-on-primary);
+}
+
+.pagination {
+    --bs-pagination-color: var(--mt-link);
+    --bs-pagination-hover-color: var(--mt-primary);
+    --bs-pagination-focus-color: var(--mt-primary);
+    --bs-pagination-active-bg: var(--mt-primary);
+    --bs-pagination-active-color: var(--mt-on-primary);
+    --bs-pagination-active-border-color: var(--mt-primary);
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+    border-color: rgba(var(--mt-link-rgb), .6);
+    box-shadow: 0 0 0 .2rem rgba(var(--mt-link-rgb), .25);
+}
+
+/* チェックマークは白なので、テーマカラーが明るい場合でも見えるようリンク色(必ず濃い)にする */
+.form-check-input:checked {
+    background-color: var(--mt-link);
+    border-color: var(--mt-link);
+}
+
+.btn-check:checked + .btn-outline-secondary {
+    background-color: var(--mt-primary);
+    border-color: var(--mt-primary);
+    color: var(--mt-on-primary);
+}
+
+/* 「戻る」ボタンは背景を白にして目立たせる */
+.btn-back {
+    background: #fff;
+}
+
+/* ---------- ヘッダー ---------- */
+.app-navbar {
+    background: var(--mt-primary);
+}
+
+.portal-staff .app-navbar {
+    background: var(--mt-staff-nav);
+    border-bottom: 3px solid var(--mt-staff-accent);
+}
+
+.app-navbar .navbar-brand {
+    font-weight: 700;
+}
+
+.portal-badge {
+    font-size: .7rem;
+    background: var(--mt-staff-accent) !important;
+    color: #2b2f36 !important;
+}
+
+.app-footer {
+    flex-shrink: 0;
+}
+
+/* ---------- ログイン画面 ---------- */
+.code-input {
+    font-size: 1.75rem;
+    letter-spacing: .5em;
+    font-weight: 700;
+    font-family: SFMono-Regular, Consolas, monospace;
+}
+
+/* ---------- アバター ---------- */
+.avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: .9rem;
+    color: #fff;
+    background: #8892a0;
+}
+
+.avatar-sm {
+    width: 28px;
+    height: 28px;
+    font-size: .8rem;
+}
+
+.avatar-xs {
+    width: 22px;
+    height: 22px;
+    font-size: .7rem;
+}
+
+.avatar-staff {
+    background: var(--mt-staff-nav);
+}
+
+/* お客様のアバターは明るめの紺にして、社内(チャコール)と見分けられるようにする */
+.avatar-customer {
+    background: var(--mt-link);
+}
+
+.app-navbar .avatar {
+    background: rgba(255, 255, 255, .25);
+}
+
+.app-navbar[data-bs-theme="light"] .avatar {
+    background: rgba(0, 0, 0, .12);
+    color: #212529;
+}
+
+.user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    max-width: 100%;
+}
+
+/* ---------- バッジ ---------- */
+.badge-status {
+    color: #fff;
+    font-weight: 600;
+    min-width: 4.5em;
+}
+
+.badge-status-open { background: var(--mt-status-open); }
+.badge-status-in_progress { background: var(--mt-status-in_progress); }
+.badge-status-resolved { background: var(--mt-status-resolved); }
+.badge-status-closed { background: var(--mt-status-closed); }
+
+.badge-type {
+    background: #fff;
+    border: 1px solid currentColor;
+    font-weight: 600;
+    min-width: 4em;
+}
+
+.badge-type-bug { color: var(--mt-type-bug); }
+.badge-type-request { color: var(--mt-type-request); }
+.badge-type-question { color: var(--mt-type-question); }
+.badge-type-other { color: var(--mt-type-other); }
+
+.issue-key {
+    font-family: SFMono-Regular, Consolas, monospace;
+    font-size: .875em;
+    color: #6c757d;
+    text-decoration: none;
+}
+
+/* ---------- 課題一覧 ---------- */
+.issue-table th {
+    font-size: .8rem;
+    color: #6c757d;
+    font-weight: 600;
+    white-space: nowrap;
+    background: #fafbfc;
+}
+
+.issue-table .col-type { width: 6.5rem; }
+.issue-table .col-key { width: 7rem; }
+.issue-table .col-assignee { width: 9rem; }
+.issue-table .col-status { width: 6.5rem; }
+.issue-table .col-priority { width: 5.5rem; }
+.issue-table .col-date { width: 8rem; }
+
+.issue-title-cell {
+    min-width: 14rem;
+}
+
+.issue-title-link {
+    color: var(--bs-body-color);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.clickable-row {
+    cursor: pointer;
+}
+
+.clickable-row:hover .issue-title-link {
+    color: var(--mt-primary);
+    text-decoration: underline;
+}
+
+.status-tabs .nav-link {
+    padding: .3rem .9rem;
+    font-size: .875rem;
+}
+
+.status-tabs .nav-link:not(.active) {
+    color: var(--bs-body-color);
+}
+
+.project-card {
+    transition: box-shadow .15s;
+}
+
+.project-card:hover {
+    box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .08) !important;
+}
+
+.status-count .badge-status {
+    min-width: auto;
+}
+
+/* ---------- 課題詳細 ---------- */
+.issue-detail {
+    max-width: 960px;
+}
+
+.issue-props {
+    border-top: 1px solid var(--bs-border-color);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.issue-props > div {
+    padding: .6rem .5rem;
+}
+
+.issue-props dt {
+    font-size: .75rem;
+    color: #6c757d;
+    font-weight: 600;
+    margin-bottom: .15rem;
+}
+
+.issue-props dd {
+    margin-bottom: 0;
+    font-size: .9rem;
+}
+
+.issue-body,
+.comment-body {
+    line-height: 1.8;
+}
+
+.comment-deleted {
+    opacity: .7;
+}
+
+.change-log li {
+    padding: .2rem .5rem;
+    background: #f6f8fa;
+    border-radius: .25rem;
+    margin-bottom: .25rem;
+}
+
+.change-label {
+    display: inline-block;
+    min-width: 4em;
+    font-weight: 600;
+    color: #495057;
+}
+
+/* ---------- 添付ファイル ---------- */
+.attachment-thumb,
+.attachment-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .375rem;
+    background: #f8f9fa;
+    overflow: hidden;
+}
+
+.attachment-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    transition: transform .2s;
+}
+
+.attachment-thumb:hover img {
+    transform: scale(1.04);
+}
+
+.attachment-file {
+    font-size: 2.5rem;
+    color: #6c757d;
+    text-decoration: none;
+}
+
+.edit-thumb {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    width: 100%;
+}
+
+.image-modal-img {
+    max-height: 75vh;
+}
+
+/* ドラッグ＆ドロップ領域 */
+.dropzone {
+    border: 2px dashed #c4ccd4;
+    border-radius: .5rem;
+    background: #fafbfc;
+    padding: 1.25rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+}
+
+.dropzone:hover,
+.dropzone:focus {
+    border-color: var(--mt-primary);
+    outline: none;
+}
+
+.dropzone.is-dragover {
+    border-color: var(--mt-primary);
+    background: rgba(var(--mt-primary-rgb), .08);
+}
+
+.attachment-preview {
+    position: relative;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .375rem;
+    background: #fff;
+    padding: .35rem;
+    height: 100%;
+}
+
+.attachment-preview .preview-image {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    object-position: top center;
+    border-radius: .25rem;
+    background: #f1f3f5;
+}
+
+.attachment-preview .preview-icon {
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    color: #6c757d;
+    background: #f1f3f5;
+    border-radius: .25rem;
+}
+
+.attachment-preview .preview-remove {
+    position: absolute;
+    top: .1rem;
+    right: .1rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, .6);
+    color: #fff;
+    line-height: 1;
+}
+
+/* ---------- 管理画面 ---------- */
+.form-narrow {
+    max-width: 720px;
+}
+
+.member-checklist {
+    max-height: 280px;
+    overflow-y: auto;
+    background: #fff;
+}
+
+/* ---------- スマートフォン向けの調整 ---------- */
+@media (max-width: 575.98px) {
+    main.container-xl {
+        padding-left: .75rem;
+        padding-right: .75rem;
+    }
+
+    .card-body {
+        padding: .9rem;
+    }
+
+    h1.h4 {
+        font-size: 1.15rem;
+    }
+
+    /* iOSで入力欄にフォーカスした時に勝手に拡大されないよう16px以上にする */
+    .form-control,
+    .form-select {
+        font-size: 16px;
+    }
+}
+
+details > summary {
+    cursor: pointer;
+    list-style-position: inside;
+}
+
+/* ---------- ロゴ ---------- */
+.brand-logo {
+    width: auto;
+    max-width: 100%;
+}
+
+.brand-logo-sm { height: 32px; }
+.brand-logo-md { height: 44px; }
+.brand-logo-lg { height: 64px; }
+
+/* 独自のサイト名にしている場合: 網のアイコン + サイト名 */
+.brand-text {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-weight: 700;
+}
+
+.brand-icon {
+    height: 1.8em;
+    width: auto;
+}
+
+.brand-text-lg { font-size: 1.5rem; }
+.brand-text-md { font-size: 1.2rem; }
+
+@media (max-width: 575.98px) {
+    .brand-logo-sm { height: 28px; }
+    .brand-logo-lg { height: 52px; }
+}
+
+/* ---------- 使い方(ヘルプ) ---------- */
+@media (min-width: 992px) {
+    .help-toc {
+        position: sticky;
+        top: 1rem;
+    }
+}
+
+.help-section {
+    scroll-margin-top: 1rem;
+}
+
+.help-section + .help-section {
+    margin-top: 1.5rem;
+}
+
+.help-section h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: .75rem;
+}
+
+.help-section h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 1.25rem 0 .5rem;
+}
+
+/* 手順(①②③…の番号付き) */
+.help-steps {
+    counter-reset: help-step;
+    list-style: none;
+    padding-left: 0;
+}
+
+.help-steps > li {
+    counter-increment: help-step;
+    position: relative;
+    padding-left: 2.25rem;
+    margin-bottom: 1rem;
+}
+
+.help-steps > li::before {
+    content: counter(help-step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--mt-primary);
+    color: var(--mt-on-primary);
+    font-size: .85rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 説明の中に表示する、画面のボタンの見本(押せない) */
+.help-ui {
+    pointer-events: none;
+    user-select: none;
+    vertical-align: baseline;
+}
+
+/* ---------- CSP対応のための補助クラス(HTMLに style 属性を書かないため) ---------- */
+/* Alpine.js の初期化前は隠しておく要素 */
+[x-cloak] {
+    display: none !important;
+}
+
+/* 小さな補足文字(日時・ファイルサイズなど) */
+.fs-xs {
+    font-size: .75rem;
+}
+
+/* 改行をそのまま表示する(確認ダイアログのメッセージ) */
+.text-pre-line {
+    white-space: pre-line;
+}
