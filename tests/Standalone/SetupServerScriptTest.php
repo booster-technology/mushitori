@@ -282,3 +282,13 @@ test('同梱のシェルスクリプトに文法の誤りが無い', function (s
 
     expect($result->exitCode())->toBe(0, $result->errorOutput());
 })->with(['install.sh', 'update.sh', 'deploy/setup-server.sh']);
+
+test('同梱のシェルスクリプトは、git 上で実行権限が付いている(clone した直後に ./update.sh で動くように)', function (string $script) {
+    // Windows で作ったファイルは実行権限が付かないため、git に記録されている権限で確かめる(git で取得していない場合は確かめない)
+    $result = Process::path(base_path())->run(['git', 'ls-files', '--stage', '--', $script]);
+    if (! $result->successful() || trim($result->output()) === '') {
+        $this->markTestSkipped('git で取得したフォルダではないため確認しません');
+    }
+
+    expect(strtok($result->output(), ' '))->toBe('100755', "git update-index --chmod=+x {$script} で実行権限を付けてください");
+})->with(['install.sh', 'update.sh', 'deploy/setup-server.sh']);
