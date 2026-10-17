@@ -49,7 +49,8 @@ test('コマンド版インストーラの「次にやること」は、PHP-FPM�
     $steps = implode("\n", app(InstallerService::class)->nextSteps($settings, '/path/to/nginx.conf'));
 
     expect($steps)->toContain('sudo bash '.str_replace('\\', '/', base_path()).'/deploy/setup-server.sh')
-        ->toContain('sudo chown -R apache:apache storage bootstrap/cache')
+        ->toContain('sudo chown -R apache:apache storage && sudo chgrp -R apache bootstrap/cache .env && sudo chmod -R g+w bootstrap/cache && sudo chmod 640 .env')
+        ->toContain('sudo -u apache php artisan app:backup')
         ->toContain('sudo crontab -u apache -e')
         ->toContain('cd '.str_replace('\\', '/', base_path()).' && php artisan schedule:run')
         // ロードバランサーの後ろでは、ALBのアイドルタイムアウトも案内する
@@ -58,7 +59,7 @@ test('コマンド版インストーラの「次にやること」は、PHP-FPM�
     // 分からない場合は仮の文字で案内する
     config(['installer.php_fpm_pool_configs' => [$this->tmp.'/none.conf']]);
     $steps = implode("\n", app(InstallerService::class)->nextSteps($settings, '/path/to/nginx.conf'));
-    expect($steps)->toContain('sudo chown -R <Webサーバーの実行ユーザー> storage bootstrap/cache')
+    expect($steps)->toContain('sudo chown -R <Webサーバーの実行ユーザー> storage && sudo chgrp -R <Webサーバーのグループ> bootstrap/cache .env')
         ->toContain('sudo crontab -u <Webサーバーの実行ユーザー> -e');
 });
 

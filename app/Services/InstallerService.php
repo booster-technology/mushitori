@@ -197,6 +197,7 @@ class InstallerService
             // 権限・cron の案内には、Webサーバー(PHP-FPM)の実際の実行ユーザーを出す(コマンド版はSSHのユーザーで動くため、PHP-FPMの www.conf から調べる。分からなければ仮の文字)
             $account = PhpFpmUser::detect();
             $webUser = $account['user'] ?? '<Webサーバーの実行ユーザー>';
+            $webGroup = $account['group'] ?? '<Webサーバーのグループ>';
             $owner = $account !== null ? "{$account['user']}:{$account['group']}" : $webUser;
 
             // まとめて設定するスクリプト(行う内容を表示して確認してから実行する)
@@ -209,17 +210,23 @@ class InstallerService
             }
             $steps[] = 'PHPの設定(アップロード上限など): public/.user.ini で自動的に設定されます(php-fpm が読み込みます)。'
                 .'サーバー全体で設定する場合は deploy/php/99-mushitori.ini を php.ini の追加設定として配置し、php-fpm を再起動';
-            // インストール中に作られたログ等はSSHのユーザーの所有になるため、インストールの後に実行する
-            $steps[] = "書き込み権限: cd {$base} && sudo chown -R {$owner} storage bootstrap/cache".($s['db'] === 'sqlite' ? ' database' : '');
+            // インストール中に作られたログ等はSSHのユーザーの所有になるため、インストールの後に実行する。
+            // storage は Webサーバーの所有、bootstrap/cache は設置したユーザーと Webサーバーの両方が書き込める(update.sh が動くように)、.env は他のユーザーから読めないようにする
+            $sqlite = $s['db'] === 'sqlite' ? ' && sudo chown '.$owner.' '.dirname((string) $s['sqlite_path']).' '.$s['sqlite_path'] : '';
+            $steps[] = "書き込み権限: cd {$base} && sudo chown -R {$owner} storage && sudo chgrp -R {$webGroup} bootstrap/cache .env && sudo chmod -R g+w bootstrap/cache && sudo chmod 640 .env{$sqlite}";
+            $steps[] = "artisan コマンド: サーバーで実行するときは、Webサーバーのユーザーで実行してください(例: sudo -u {$webUser} php artisan app:backup)。./update.sh は自動でそうします";
             // cron はWebサーバー(PHP-FPM)と同じユーザーで動かす(別のユーザーだと、cron が作ったログファイルにWeb側が書き込めずエラーになる)
             $steps[] = "定期実行(cron): Webサーバー(PHP)と同じユーザーで登録してください(例: sudo crontab -u {$webUser} -e)。"
                 ."登録する内容: * * * * * cd {$base} && php artisan schedule:run >> /dev/null 2>&1"
                 .'(レンタルサーバーでは、コントロールパネルのcron設定で php の部分をPHPのフルパス(例: /usr/bin/php8.3)にして登録してください)';
             $steps[] = $s['backup_daily']
                 ? 'バックアップ: 毎日3時に storage/backups へ保存されます(上のcronが必要)。サーバー故障に備えて別の場所へのコピーもおすすめします'
-                : 'バックアップ: php artisan app:backup で作成できます(.env の BACKUP_DAILY=true で毎日自動実行)';
+                : "バックアップ: sudo -u {$webUser} php artisan app:backup で作成できます(.env の BACKUP_DAILY=true で毎日自動実行)";
             if (! empty($s['trusted_proxies'])) {
                 $steps[] = 'ロードバランサー: ターゲットグループのヘルスチェックのパスを /up に、アイドルタイムアウトを120秒にし(画像をまとめて添付した投稿は60秒以上かかることがあるため)、このサーバーへの接続はロードバランサーからだけ許可してください(セキュリティグループ等で制限)';
+            } elseif (str_starts_with($s['url'], 'https://')) {
+                $host = (string) parse_url($s['url'], PHP_URL_HOST);
+                $steps[] = "HTTPS: 証明書がまだ無い場合、setup-server.sh はいったん HTTP の設定を置きます。続けて sudo certbot --nginx -d {$host} を実行すると HTTPS になります";
             } elseif (str_starts_with($s['url'], 'http://')) {
                 $steps[] = 'インターネットに公開する場合は HTTPS(SSL)を設定してください(Let\'s Encrypt なら無料)';
             }
@@ -529,7 +536,7 @@ class InstallerService
 
             return null;
         } catch (Throwable $e) {
-            Log::error('インストーラ: テストメールの送信に失敗しました', ['to' => $admin->email, 'mail' => $s['mail'], 'mail_host' => $s['mail_host'] ?? null, 'exception' => $e]);
+            Log::error('インストーラ: テストメールの送信に失敗しました', ['user_id' => $admin->id, 'mail' => $s['mail'], 'mail_host' => $s['mail_host'] ?? null, 'exception' => $e]);
 
             return $s['mail'] === 'ses'
                 ? 'テストメールの送信に失敗しました。このサーバーのIAMロール(SESの送信権限)・.env の AWS_DEFAULT_REGION・送信元アドレス(SESで認証済みか)を確認してください: '.$e->getMessage()

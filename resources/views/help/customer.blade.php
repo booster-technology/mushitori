@@ -74,7 +74,7 @@
                 </ol>
                 <ul class="small mb-0">
                     <li>メールが届かないときは、コード入力画面の「コードを再送する」を押してください。<strong>再送すると、以前のコードは使えなくなります。</strong>最新のメールのコードを入力してください。</li>
-                    <li>コードを1時間に{{ LoginCodeService::MAX_FAILURES_PER_ACCOUNT }}回間違えると、安全のため一時的にログインできなくなります（1時間ほどで解除されます）。お急ぎの場合は担当者にご連絡ください。</li>
+                    <li>コードを1時間に{{ LoginCodeService::MAX_FAILURES_PER_ACCOUNT }}回間違えると、安全のため一時的にログインできなくなります（1時間ほどで解除されます。1日に{{ LoginCodeService::MAX_FAILURES_PER_DAY }}回間違えた場合は24時間）。お急ぎの場合は担当者にご連絡ください。</li>
                 </ul>
             </div>
         </section>

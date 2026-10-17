@@ -12,7 +12,7 @@
         // 「前の画面に戻る」は同じサイト内の前の画面(わからなければホーム)。CSPに合わせて、スクリプトで前の画面に戻るリンク(history.back)は使わない
         $home = \App\Support\Portal::route('home');
         $previous = url()->previous($home);
-        $backUrl = str_starts_with($previous, url('/')) && $previous !== url()->current() ? $previous : $home;
+        $backUrl = is_same_site_url($previous) && $previous !== url()->current() ? $previous : $home;
     @endphp
     <main class="container py-5">
         <div class="row justify-content-center">

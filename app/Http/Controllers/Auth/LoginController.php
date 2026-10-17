@@ -96,7 +96,7 @@ class LoginController extends Controller
 
         if ($user === null) {
             $message = $this->loginCodes->tooManyFailures($email, $this->role())
-                ? '認証コードの入力ミスが続いたため、一時的にログインできません。1時間ほどおいてから再度お試しください。'
+                ? '認証コードの入力ミスが続いたため、一時的にログインできません。時間をおいてから再度お試しいただくか、担当者にロックの解除を依頼してください。'
                 : '認証コードが正しくないか、有効期限が切れています。';
 
             return back()->withErrors(['code' => $message]);

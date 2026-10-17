@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\InstallerService;
 use App\Services\LoginCodeService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Defer\DeferredCallbackCollection;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -150,7 +151,7 @@ test('未登録のメールアドレスでも、入力ミスが続けば同じ�
 
     $this->travel(2)->minutes();
     $this->post('/login/code', ['code' => '123456'])
-        ->assertSessionHasErrors(['code' => '認証コードの入力ミスが続いたため、一時的にログインできません。1時間ほどおいてから再度お試しください。']);
+        ->assertSessionHasErrors(['code' => '認証コードの入力ミスが続いたため、一時的にログインできません。時間をおいてから再度お試しいただくか、担当者にロックの解除を依頼してください。']);
 });
 
 test('同じ宛先への認証コードの送信は、接続元を変えても1時間に10回まで(メール爆撃対策)。ロックの解除でリセットされる', function () {
@@ -283,14 +284,14 @@ test('中身が空のセグメントを含むJPEGも添付でき、エラーに�
     expect($attachment->width)->toBe(120)->and($attachment->thumbnail_path)->not->toBeNull();
 });
 
-test('画素数が極端に多い画像(ファイルは小さくても表示するブラウザが固まる)は添付できない', function () {
+test('画素数が極端に多い画像(ファイルは小さくても表示するブラウザが固まる)は、拡張子を画像以外にしても添付できない', function (string $name) {
     loginAs($this->customer);
-    postIssueWith([UploadedFile::fake()->createWithContent('flood.png', pngHeaderOnly(20000, 20000))])
+    postIssueWith([UploadedFile::fake()->createWithContent($name, pngHeaderOnly(20000, 20000))])
         ->assertSessionHasErrors('attachments.0');
 
     expect(Attachment::count())->toBe(0);
     expect(Storage::disk('local')->allFiles())->toBe([]);
-});
+})->with(['flood.png', 'flood.txt', 'flood.zip', 'flood.pdf']);
 
 test('ファイル名から文字の向きを変える制御文字を取り除く(拡張子の偽装表示対策)', function () {
     loginAs($this->customer);
@@ -363,4 +364,106 @@ test('インストール・アップデートはWebの画面からはできな�
     loginAs(User::factory()->staff()->create());
     $this->get('/staff/update')->assertNotFound();
     $this->post('/staff/update')->assertNotFound();
+});
+
+/**
+ * 認証コードを発行して、メールで送られたコードを返す
+ */
+function issueLoginCode(string $email, UserRole $role): string
+{
+    Mail::fake();
+    app(LoginCodeService::class)->send($email, $role);
+    // メールは応答を返した後に送る(defer)ため、ここで実行させる
+    app(DeferredCallbackCollection::class)->invoke();
+    $code = '';
+    Mail::assertSent(LoginCodeMail::class, function (LoginCodeMail $mail) use (&$code) {
+        $code = $mail->code;
+
+        return true;
+    });
+
+    return $code;
+}
+
+test('1時間ごとのロックが解けても、1日に30回間違えると24時間ロックされる(総当たりを続けられないように)', function () {
+    $customer = User::factory()->customer()->create(['email' => 'brute@example.com']);
+    $loginCodes = app(LoginCodeService::class);
+
+    // 10回間違えて1時間ロック → 解けたらまた10回 …を3回くり返す
+    for ($round = 0; $round < 3; $round++) {
+        for ($i = 0; $i < LoginCodeService::MAX_FAILURES_PER_ACCOUNT; $i++) {
+            $loginCodes->verify('brute@example.com', UserRole::Customer, '000000');
+        }
+        expect($loginCodes->tooManyFailures('brute@example.com', UserRole::Customer))->toBeTrue();
+        $this->travel(61)->minutes();
+    }
+
+    // 1時間のロックは解けているが、1日の上限でロックされたまま(正しいコードでもログインできない)
+    expect($loginCodes->tooManyFailures('brute@example.com', UserRole::Customer))->toBeTrue()
+        ->and($loginCodes->lockedMinutes($customer))->toBeGreaterThan(60);
+    $code = issueLoginCode('brute@example.com', UserRole::Customer);
+    expect($loginCodes->verify('brute@example.com', UserRole::Customer, $code))->toBeNull();
+
+    // 社内メンバーが解除すれば、すぐにログインできる
+    $loginCodes->unlock($customer);
+    $code = issueLoginCode('brute@example.com', UserRole::Customer);
+    expect($loginCodes->verify('brute@example.com', UserRole::Customer, $code)?->id)->toBe($customer->id);
+});
+
+test('正しいコードでログインすると、それまでの入力ミスの回数は消える', function () {
+    $customer = User::factory()->customer()->create(['email' => 'typo@example.com']);
+    $loginCodes = app(LoginCodeService::class);
+    $wrongTimes = LoginCodeService::MAX_FAILURES_PER_ACCOUNT - 1;
+
+    for ($i = 0; $i < $wrongTimes; $i++) {
+        $loginCodes->verify('typo@example.com', UserRole::Customer, '000000');
+    }
+    $code = issueLoginCode('typo@example.com', UserRole::Customer);
+    expect($loginCodes->verify('typo@example.com', UserRole::Customer, $code)?->id)->toBe($customer->id);
+
+    // 消えていなければ、ここで上限を超えてロックされる
+    for ($i = 0; $i < $wrongTimes; $i++) {
+        $loginCodes->verify('typo@example.com', UserRole::Customer, '000000');
+    }
+    expect($loginCodes->tooManyFailures('typo@example.com', UserRole::Customer))->toBeFalse();
+});
+
+test('1つの認証コードで試せるのは5回まで(5回目までに正しいコードを入力すればログインできる)', function () {
+    $customer = User::factory()->customer()->create(['email' => 'five@example.com']);
+    $loginCodes = app(LoginCodeService::class);
+
+    $code = issueLoginCode('five@example.com', UserRole::Customer);
+    $wrong = $code === '000000' ? '111111' : '000000';
+    for ($i = 0; $i < LoginCodeService::MAX_ATTEMPTS - 1; $i++) {
+        $loginCodes->verify('five@example.com', UserRole::Customer, $wrong);
+    }
+    expect($loginCodes->verify('five@example.com', UserRole::Customer, $code)?->id)->toBe($customer->id);
+
+    $code = issueLoginCode('five@example.com', UserRole::Customer);
+    $wrong = $code === '000000' ? '111111' : '000000';
+    for ($i = 0; $i < LoginCodeService::MAX_ATTEMPTS; $i++) {
+        $loginCodes->verify('five@example.com', UserRole::Customer, $wrong);
+    }
+    expect($loginCodes->verify('five@example.com', UserRole::Customer, $code))->toBeNull();
+});
+
+test('エラー画面の「前の画面に戻る」は、このサイトのURLだけを使う(よく似た名前の外部サイトへ誘導しない)', function () {
+    // サイトのURL(APP_URL)は環境によって違うので、そこから組み立てる
+    $base = rtrim(url('/'), '/');
+    $host = (string) parse_url($base, PHP_URL_HOST);
+    $lookAlike = str_replace($host, $host.'.evil.example', $base);
+
+    $this->get('/no-such-page', ['Referer' => $lookAlike.'/fake-login'])
+        ->assertNotFound()
+        ->assertDontSee('evil.example', false);
+    $this->get('/no-such-page', ['Referer' => $base.'/help'])
+        ->assertNotFound()
+        ->assertSee('href="'.$base.'/help"', false);
+
+    expect(is_same_site_url($base.'/projects/WEB/issues'))->toBeTrue()
+        ->and(is_same_site_url($lookAlike.'/'))->toBeFalse()
+        ->and(is_same_site_url(str_replace($host, $host.'@evil.example', $base).'/'))->toBeFalse()
+        ->and(is_same_site_url('https://'.$host.':1/'))->toBeFalse()
+        ->and(is_same_site_url('//'.$host.'/'))->toBeFalse()
+        ->and(is_same_site_url('javascript:alert(1)'))->toBeFalse();
 });

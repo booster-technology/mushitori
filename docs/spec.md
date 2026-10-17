@@ -65,7 +65,7 @@
 | コードの有効期限 | 10分 |
 | 1つのコードで間違えられる回数 | 5回(超えると、そのコードは使えない) |
 | 再送 | できる。再送すると以前のコードは使えなくなる |
-| アカウントのロック | 1つのアカウントで1時間に10回間違えるとロック。最初の入力ミスから1時間で自動解除。社内メンバーがユーザー編集画面から、またはサーバーで `php artisan app:unlock-login メールアドレス` で解除できる |
+| アカウントのロック | 1つのアカウントで1時間に10回間違えるとロック(最初の入力ミスから1時間で自動解除)。1日に30回間違えると24時間ロック。入力の回数は照合の前に数える(同時に送信しても上限を超えて試せない)。社内メンバーがユーザー編集画面から、またはサーバーで `php artisan app:unlock-login メールアドレス` で解除できる |
 | 送信回数の上限 | 同じ宛先へは1時間10回まで(接続元のIPに関係なく) |
 | 接続元ごとの上限 | 送信: 同じメールアドレス+IPで1分5回・同じIPで1分20回。確認: 同じIPで1分10回 |
 | ログイン状態の保持 | 選んだ場合は30日。選ばない場合は、操作が無いまま120分(`SESSION_LIFETIME`)で切れる |
@@ -125,7 +125,7 @@
 
 | 項目 | 仕様 |
 |:--|:--|
-| 形式 | png / jpg / gif / webp / pdf / txt / log / csv / xlsx / xls / docx / doc / pptx / ppt / zip / mp4 / mov |
+| 形式 | png / jpg / jpeg / gif / webp / pdf / txt / log / csv / xlsx / xls / docx / doc / pptx / ppt / zip / mp4 / mov |
 | 大きさ・数 | 1ファイル10MBまで、1回の投稿で10ファイルまで |
 | 追加方法 | ファイル選択・ドラッグ＆ドロップ・Ctrl+V(スクリーンショットの貼り付け)。送信前にプレビューを表示する |
 | 形式のチェック | 拡張子とファイルの中身の両方を確認する。SVG・HTML などは不可。画像の拡張子なら中身も画像であること。画像は5000万画素まで |
@@ -226,15 +226,16 @@ cron で毎分 `php artisan schedule:run` を Webサーバー(PHP-FPM)と同じ�
 ## 16. バックアップ
 
 - `php artisan app:backup` で、データベース(MySQLは mysqldump、SQLiteは VACUUM INTO でコピー)・添付ファイル・`.env`・復元手順(RESTORE.txt)を1つのファイル(zip。zip拡張が無ければ tar.gz)にまとめる
-- 保存先は `storage/backups`(`BACKUP_PATH`)。新しいものから `BACKUP_KEEP` 個(既定7)を残して古いものを削除する
+- 保存先は `storage/backups`(`BACKUP_PATH`)。新しいものから `BACKUP_KEEP` 個(既定7)を残して古いものを削除する(日数ではなく個数。`update.sh` のたびにも1個作られる)
 - `.env` を含めない場合は `--without-env`
 - 完全に削除したデータも、バックアップの保管期間のあいだはバックアップに残る
 
 ## 17. インストール・アップデート
 
 - SSHでサーバーにログインし、コマンドで行う(Webの画面からのインストール・更新の機能は無い)
-- インストール: `bash install.sh`(依存パッケージ(Composer) → `php artisan app:install` で設定の聞き取り・`.env`の作成・データベースの作成・最初の社内メンバーの登録・テストメール)。本番サーバーでは続けて `deploy/setup-server.sh`(書き込み権限・Nginx・cron)を実行できる
-- アップデート: `./update.sh`(git で設置した場合のみ。更新前のバックアップ → メンテナンスモード → git pull → 依存パッケージ → データベースの更新 → キャッシュの作り直し)
+- インストール: `bash install.sh`(依存パッケージ(Composer) → `php artisan app:install` で設定の聞き取り・`.env`の作成・データベースの作成・最初の社内メンバーの登録・テストメール)。本番サーバーでは続けて `deploy/setup-server.sh`(書き込み権限・Nginx・cron)を実行できる。HTTPS の証明書がまだ無い場合、Nginx はいったん HTTP の設定にし、`certbot --nginx` で HTTPS にする
+- アップデート: `./update.sh`(git で設置した場合のみ。更新前のバックアップ → メンテナンスモード → git pull → 依存パッケージ → データベースの更新 → キャッシュの作り直し)。git pull・composer は実行したユーザーで、artisan は Webサーバーのユーザーで実行する
+- 権限: `storage` は Webサーバー(PHP-FPM)の所有、`bootstrap/cache` は設置したユーザーと Webサーバーの両方が書き込める、`.env` は設置したユーザーの所有・Webサーバーのグループ・640。VPS では artisan のコマンドを Webサーバーのユーザーで実行する(`sudo -u apache php artisan …`)
 
 | コマンド | 内容 |
 |:--|:--|

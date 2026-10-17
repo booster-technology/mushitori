@@ -35,6 +35,15 @@ class LoginCodeService
     public const FAILURE_WINDOW_SECONDS = 3600;
 
     /**
+     * 1アカウントあたりの入力ミスの1日の上限。
+     * 1時間ごとのロックが解けるたびに試し続ける総当たり(1日240回)を防ぐ。超えると24時間ログインできない(社内メンバーが解除できる)
+     */
+    public const MAX_FAILURES_PER_DAY = 30;
+
+    /** 1日の入力ミスを数える期間(秒) */
+    public const DAILY_WINDOW_SECONDS = 86400;
+
+    /**
      * 同じ宛先への認証コードの送信回数の上限(1時間あたり)。
      * 接続元を変えながら同じ相手にメールを送り続ける嫌がらせ(メール爆撃)を防ぐ。登録の有無に関係なく数える
      */
@@ -96,7 +105,14 @@ class LoginCodeService
     {
         $user = $this->findLoginableUser($email, $role);
         $failureKey = $this->failureKey($email, $role, $user);
-        if (RateLimiter::tooManyAttempts($failureKey, self::MAX_FAILURES_PER_ACCOUNT)) {
+        if ($this->isLocked($failureKey)) {
+            return null;
+        }
+
+        // 照合する前に回数を数える(同時に大量に送信されても、上限を超えて照合させないように)。正しかった場合は後で消す
+        $hourly = RateLimiter::hit($failureKey, self::FAILURE_WINDOW_SECONDS);
+        $daily = RateLimiter::hit($this->dailyKey($failureKey), self::DAILY_WINDOW_SECONDS);
+        if ($hourly > self::MAX_FAILURES_PER_ACCOUNT || $daily > self::MAX_FAILURES_PER_DAY) {
             return null;
         }
 
@@ -108,8 +124,17 @@ class LoginCodeService
             ->latest('id')
             ->first();
 
+        // コードごとの入力回数も照合の前にDB上で加算する(同時送信で1つのコードを5回を超えて試させないように)。
+        // 加算できなければ、同時に送信された別の入力で回数を使い切った・使用済みになった
+        if ($loginCode !== null && LoginCode::whereKey($loginCode->id)
+            ->whereNull('used_at')
+            ->where('attempts', '<', self::MAX_ATTEMPTS)
+            ->increment('attempts') === 0) {
+            $loginCode = null;
+        }
+
         if ($loginCode === null || ! hash_equals($loginCode->code_hash, $this->hash($code))) {
-            $this->recordFailure($failureKey, $loginCode, $role);
+            $this->recordFailure($loginCode, $role, $hourly, $daily);
 
             return null;
         }
@@ -117,13 +142,14 @@ class LoginCodeService
         // 同時に送信されても1回しか使えないよう、未使用の場合だけ使用済みにする
         $consumed = LoginCode::whereKey($loginCode->id)
             ->whereNull('used_at')
-            ->where('attempts', '<', self::MAX_ATTEMPTS)
             ->update(['used_at' => now()]);
         if ($consumed === 0) {
             return null;
         }
 
+        // 本人がログインできたので、入力ミスの回数(1時間・1日)を消す
         RateLimiter::clear($failureKey);
+        RateLimiter::clear($this->dailyKey($failureKey));
         $user->forceFill(['last_login_at' => now()])->save();
 
         return $user;
@@ -134,9 +160,7 @@ class LoginCodeService
      */
     public function tooManyFailures(string $email, UserRole $role): bool
     {
-        $failureKey = $this->failureKey($email, $role, $this->findLoginableUser($email, $role));
-
-        return RateLimiter::tooManyAttempts($failureKey, self::MAX_FAILURES_PER_ACCOUNT);
+        return $this->isLocked($this->failureKey($email, $role, $this->findLoginableUser($email, $role)));
     }
 
     /**
@@ -147,7 +171,9 @@ class LoginCodeService
      */
     public function unlock(User $user, ?User $actor = null): void
     {
-        RateLimiter::clear($this->failureKey($user->email, $user->role, $user));
+        $failureKey = $this->failureKey($user->email, $user->role, $user);
+        RateLimiter::clear($failureKey);
+        RateLimiter::clear($this->dailyKey($failureKey));
         RateLimiter::clear($this->sendKey($user->email));
 
         Log::info('ログインのロックを解除しました', ['user_id' => $user->id, 'unlocked_by' => $actor?->id ?? 'command']);
@@ -159,11 +185,16 @@ class LoginCodeService
     public function lockedMinutes(User $user): ?int
     {
         $key = $this->failureKey($user->email, $user->role, $user);
-        if (! RateLimiter::tooManyAttempts($key, self::MAX_FAILURES_PER_ACCOUNT)) {
-            return null;
+        $seconds = [];
+        if (RateLimiter::tooManyAttempts($key, self::MAX_FAILURES_PER_ACCOUNT)) {
+            $seconds[] = RateLimiter::availableIn($key);
+        }
+        if (RateLimiter::tooManyAttempts($this->dailyKey($key), self::MAX_FAILURES_PER_DAY)) {
+            $seconds[] = RateLimiter::availableIn($this->dailyKey($key));
         }
 
-        return max(1, (int) ceil(RateLimiter::availableIn($key) / 60));
+        // 1時間・1日の両方でロックされている場合は、遅い方まで解除されない
+        return $seconds === [] ? null : max(1, (int) ceil(max($seconds) / 60));
     }
 
     /**
@@ -185,28 +216,43 @@ class LoginCodeService
     }
 
     /**
-     * 入力ミスを記録する。回数はDB上で直接加算し(同時送信でも数え漏れないように)、上限に達したコードは無効にする
+     * 入力ミスの後始末。回数は照合の前に数え終わっているので、ここでは上限に達したコードを無効にし、ロックしたら記録する
      */
-    private function recordFailure(string $failureKey, ?LoginCode $loginCode, UserRole $role): void
+    private function recordFailure(?LoginCode $loginCode, UserRole $role, int $hourly, int $daily): void
     {
         if ($loginCode !== null) {
-            LoginCode::whereKey($loginCode->id)->increment('attempts');
             LoginCode::whereKey($loginCode->id)
                 ->where('attempts', '>=', self::MAX_ATTEMPTS)
                 ->whereNull('used_at')
                 ->update(['used_at' => now()]);
         }
 
-        $failures = RateLimiter::hit($failureKey, self::FAILURE_WINDOW_SECONDS);
-
-        // 登録済みのアカウントが入力ミスの上限に達して一時ロックされたら、不正アクセスの兆候として記録する(コードやメールアドレスは出さない)
-        if ($loginCode !== null && $failures === self::MAX_FAILURES_PER_ACCOUNT) {
+        // 登録済みのアカウントが入力ミスの上限に達してロックされたら、不正アクセスの兆候として記録する(コードやメールアドレスは出さない)
+        if ($loginCode !== null && ($hourly === self::MAX_FAILURES_PER_ACCOUNT || $daily === self::MAX_FAILURES_PER_DAY)) {
             Log::warning('認証コードの入力ミスが続いたため、一時的にログインをロックしました', [
                 'user_id' => $loginCode->user_id,
                 'portal' => $role->value,
+                'lock' => $daily === self::MAX_FAILURES_PER_DAY ? '24時間' : '1時間',
                 'ip' => request()->ip(),
             ]);
         }
+    }
+
+    /**
+     * 入力ミスが上限に達して、ロックされているか(1時間・1日のどちらか)
+     */
+    private function isLocked(string $failureKey): bool
+    {
+        return RateLimiter::tooManyAttempts($failureKey, self::MAX_FAILURES_PER_ACCOUNT)
+            || RateLimiter::tooManyAttempts($this->dailyKey($failureKey), self::MAX_FAILURES_PER_DAY);
+    }
+
+    /**
+     * 1日の入力ミスを数えるキー
+     */
+    private function dailyKey(string $failureKey): string
+    {
+        return $failureKey.':day';
     }
 
     /**

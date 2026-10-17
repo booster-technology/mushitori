@@ -203,7 +203,7 @@
 
                 <h3>ログインがロックされた場合</h3>
                 <p>
-                    認証コードを1時間に{{ LoginCodeService::MAX_FAILURES_PER_ACCOUNT }}回間違えると、そのユーザーは一時的にログインできなくなります（最初の入力ミスから1時間で自動的に解除されます）。
+                    認証コードを1時間に{{ LoginCodeService::MAX_FAILURES_PER_ACCOUNT }}回間違えると、そのユーザーは一時的にログインできなくなります（最初の入力ミスから1時間で自動的に解除されます。1日に{{ LoginCodeService::MAX_FAILURES_PER_DAY }}回間違えた場合は24時間）。
                     ユーザー一覧では <span class="badge text-bg-warning"><i class="bi bi-lock-fill"></i> ロック中</span> と表示されます。
                 </p>
                 <p>

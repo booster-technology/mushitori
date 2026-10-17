@@ -77,3 +77,22 @@ if (! function_exists('format_text')) {
         return nl2br($linked ?? $escaped, false);
     }
 }
+
+if (! function_exists('is_same_site_url')) {
+    /**
+     * URLがこのサイト(スキーム・ホスト・ポートが同じ)のものか。
+     * 先頭の文字列だけで比べると「https://issues.example.com.evil.example/」のような偽のサイトも通ってしまうため、部品ごとに比べる
+     */
+    function is_same_site_url(string $url): bool
+    {
+        $target = parse_url($url);
+        $site = parse_url(url('/'));
+        if (! is_array($target) || ! is_array($site) || ! isset($target['scheme'], $target['host'])) {
+            return false;
+        }
+
+        return strtolower($target['scheme']) === strtolower($site['scheme'] ?? '')
+            && strtolower($target['host']) === strtolower($site['host'] ?? '')
+            && ($target['port'] ?? null) === ($site['port'] ?? null);
+    }
+}

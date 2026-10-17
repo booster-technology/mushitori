@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\InstallerService;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -43,6 +44,8 @@ beforeEach(function () {
         File::ensureDirectoryExists(($dir === 'nginx' || $dir === 'bin' || $dir === 'record' ? $this->tmp : $this->appDir).'/'.$dir);
     }
     copy(base_path('deploy/setup-server.sh'), $this->appDir.'/deploy/setup-server.sh');
+    File::copyDirectory(base_path('deploy/nginx'), $this->appDir.'/deploy/nginx');
+    File::ensureDirectoryExists($this->tmp.'/letsencrypt');
     file_put_contents($this->appDir.'/artisan', '');
     // インストール済み(コマンド版インストーラが書いた .env。ALBの後ろ)
     file_put_contents($this->appDir.'/.env', "APP_URL=https://issues.example.com\nTRUSTED_PROXIES='10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'\n");
@@ -53,14 +56,14 @@ beforeEach(function () {
         'id' => 'case "$1" in -u) echo 0 ;; -gn) echo "$2" ;; -un) echo deployer ;; *) exit 0 ;; esac',
         // 一式を設置したユーザー(artisan の所有者)
         'stat' => 'echo deployer',
-        // php artisan app:nginx-config の代わり
-        'php' => 'echo "# ムシトリ用 Nginx 設定"; echo "server {"; echo "    server_name issues.example.com;"; echo "}"',
+        // php は cron の行に使うだけ(Nginx の設定は PHP を使わずにスクリプト自身が作る)
+        'php' => 'exit 0',
         'nginx' => 'case "$1" in -T) cat "$RECORD/nginx-dump" 2>/dev/null || true ;; -t) echo "nginx -t" >> "$RECORD/calls"; exit "${STUB_NGINX_T:-0}" ;; esac',
         'crontab' => 'if [ "$3" = "-l" ]; then cat "$RECORD/crontab" 2>/dev/null || exit 1; else cat > "$RECORD/crontab"; fi',
         // 状態の確認(is-active)は記録しない(変更を伴う操作だけ記録する)
         'systemctl' => '[ "$1" = "is-active" ] && exit 0; echo "systemctl $*" >> "$RECORD/calls"',
         'chown' => 'echo "chown $*" >> "$RECORD/calls"',
-        'runuser' => 'shift 3; exec "$@"',
+        'chmod' => 'echo "chmod $*" >> "$RECORD/calls"',
     ];
     foreach ($stubs as $name => $body) {
         file_put_contents($this->tmp."/bin/{$name}", "#!/usr/bin/env bash\n{$body}\n");
@@ -87,7 +90,7 @@ afterEach(function () {
 function setupServer(array $args, array $env = []): ProcessResult
 {
     return Process::path(test()->tmp)
-        ->env($env)
+        ->env($env + ['LETSENCRYPT_LIVE_DIR' => test()->tmp.'/letsencrypt'])
         ->timeout(60)
         ->run(array_merge([test()->bash, 'run.sh', '--yes', '--web-user=apache', '--nginx-conf='.test()->tmp.'/nginx/mushitori.conf'], $args));
 }
@@ -105,7 +108,18 @@ test('権限を付け、Nginx の設定を置いて再読み込みし、cron を
         ->and($result->output())->toContain('サーバーの設定が完了しました');
 
     $calls = setupCalls();
-    expect($calls)->toMatch('#chown -R apache:apache \S+/storage \S+/bootstrap/cache#')
+    expect($calls)->toMatch('#chown -R -h apache:apache \S+/storage
+#')
+        // bootstrap/cache は設置したユーザーと Webサーバーの両方が書き込める(update.sh が動くように)
+        ->and($calls)->toMatch('#chown -R -h deployer:apache \S+/bootstrap/cache
+#')
+        ->and($calls)->toMatch('#chmod -R g\+rwX \S+/bootstrap/cache
+#')
+        // .env は他のユーザーから読めないように
+        ->and($calls)->toMatch('#chown -h deployer:apache \S+/\.env
+#')
+        ->and($calls)->toMatch('#chmod 640 \S+/\.env
+#')
         // 一式のフォルダ自体の所有者は変えない
         ->and($calls)->not->toMatch('#chown \S+ \S+/app\n#')
         ->and($calls)->toContain('nginx -t')
@@ -182,3 +196,89 @@ test('--dry-run では何も変更しない', function () {
         ->and(file_exists($this->tmp.'/nginx/mushitori.conf'))->toBeFalse()
         ->and(file_exists($this->tmp.'/record/crontab'))->toBeFalse();
 });
+
+/**
+ * スクリプトから見える設置フォルダのパス(Windows の bash では /tmp/... などになる)
+ */
+function setupAppPath(): string
+{
+    return trim(Process::path(test()->appDir)->run([test()->bash, '-c', 'pwd'])->output());
+}
+
+test('Nginx の設定は、インストーラ(app:nginx-config)と同じ内容をスクリプト自身が作る(Web側のPHPの出力は使わない)', function (string $env, array $args, array $settings) {
+    file_put_contents($this->appDir.'/.env', $env);
+    if (str_starts_with($settings['url'], 'https://') && empty($settings['trusted_proxies'])) {
+        File::ensureDirectoryExists($this->tmp.'/letsencrypt/issues.example.com');
+        file_put_contents($this->tmp.'/letsencrypt/issues.example.com/fullchain.pem', 'dummy');
+    }
+
+    $result = setupServer($args);
+    expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput());
+
+    // インストーラが作る設定の設置場所の部分を、スクリプトから見たパスにして比べる
+    $expected = str_replace(str_replace(DIRECTORY_SEPARATOR, '/', base_path()), setupAppPath(), app(InstallerService::class)->nginxConfig($settings));
+    expect(trim((string) file_get_contents($this->tmp.'/nginx/mushitori.conf')))->toBe(trim($expected));
+})->with([
+    'ALBの後ろ' => ["APP_URL=https://issues.example.com\nTRUSTED_PROXIES='10.0.0.0/8'\n", [], ['url' => 'https://issues.example.com', 'trusted_proxies' => '10.0.0.0/8']],
+    'HTTPS(証明書あり)' => ["APP_URL=https://issues.example.com\n", [], ['url' => 'https://issues.example.com', 'trusted_proxies' => null]],
+    'HTTPのみ' => ["APP_URL=http://issues.example.com\n", [], ['url' => 'http://issues.example.com', 'trusted_proxies' => null]],
+    '--behind-proxy=no でALBを使わない' => ["APP_URL=http://issues.example.com\nTRUSTED_PROXIES='10.0.0.0/8'\n", ['--behind-proxy=no'], ['url' => 'http://issues.example.com', 'trusted_proxies' => null]],
+]);
+
+test('HTTPS の証明書がまだ無い場合は、いったん HTTP の設定を置き、certbot --nginx で HTTPS にするよう案内する', function () {
+    file_put_contents($this->appDir.'/.env', "APP_URL=https://issues.example.com\n");
+
+    $result = setupServer([]);
+
+    expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput())
+        ->and($result->output())->toContain('HTTPS の証明書がまだ無いため')
+        ->and($result->output())->toContain('sudo certbot --nginx -d issues.example.com');
+    $conf = (string) file_get_contents($this->tmp.'/nginx/mushitori.conf');
+    expect($conf)->toContain('server_name issues.example.com;')
+        ->and($conf)->not->toContain('ssl_certificate');
+});
+
+test('SQLite のデータベースは、設置フォルダの中にある場合だけ権限を変える(.env を書き換えて他の場所の所有者を変えさせない)', function () {
+    $appPath = setupAppPath();
+    File::ensureDirectoryExists($this->appDir.'/database');
+    file_put_contents($this->appDir.'/database/database.sqlite', '');
+
+    file_put_contents($this->appDir.'/.env', "APP_URL=http://issues.example.com\nDB_CONNECTION=sqlite\nDB_DATABASE=/etc/passwd\n");
+    $result = setupServer(['--no-nginx', '--no-cron']);
+    expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput())
+        ->and($result->output())->toContain('設置フォルダの外にあるため、権限は変えません')
+        ->and(setupCalls())->not->toContain('/etc');
+
+    @unlink($this->tmp.'/record/calls');
+    file_put_contents($this->appDir.'/.env', "APP_URL=http://issues.example.com\nDB_CONNECTION=sqlite\nDB_DATABASE={$appPath}/database/database.sqlite\n");
+    $result = setupServer(['--no-nginx', '--no-cron']);
+    expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput())
+        ->and(setupCalls())->toContain("chown -h apache:apache {$appPath}/database\n")
+        ->and(setupCalls())->toContain("chown -h apache:apache {$appPath}/database/database.sqlite\n");
+});
+
+test('公開URLのドメインに、Nginx の設定を紛れ込ませられる文字があれば止める', function () {
+    file_put_contents($this->appDir.'/.env', "APP_URL=http://issues.example.com;include\n");
+
+    $result = setupServer([]);
+
+    expect($result->exitCode())->toBe(1)
+        ->and($result->errorOutput())->toContain('公開URLのドメインが正しくありません')
+        ->and(file_exists($this->tmp.'/nginx/mushitori.conf'))->toBeFalse();
+});
+
+test('--help は使い方だけを表示する(スクリプトの中身は出さない)', function () {
+    $result = Process::path($this->tmp)->run([$this->bash, 'run.sh', '--help']);
+
+    expect($result->exitCode())->toBe(0)
+        ->and($result->output())->toContain('オプション:')
+        ->and($result->output())->toContain('--dry-run')
+        ->and($result->output())->not->toContain('set -euo pipefail')
+        ->and($result->output())->not->toContain('APP_DIR=');
+});
+
+test('同梱のシェルスクリプトに文法の誤りが無い', function (string $script) {
+    $result = Process::path(base_path())->run([$this->bash, '-n', $script]);
+
+    expect($result->exitCode())->toBe(0, $result->errorOutput());
+})->with(['install.sh', 'update.sh', 'deploy/setup-server.sh']);

@@ -66,11 +66,12 @@
 - ローカル開発のMySQL接続情報は `.env`、DB作成SQLは `database/sql/setup-local-mysql.sql`(どちらもGit管理外)
 
 ## セキュリティ上の約束事(再発防止テストは `tests/Feature/SecurityTest.php`)
-- ログイン: 入力ミスの回数はユーザーID単位で数える(`LoginCodeService::failureKey()`)。メールアドレスの照合はDBの `=` だけに頼らず、PHPで完全一致も確認する(MySQLの `utf8mb4_unicode_ci` は「à」と「a」、全角と半角を同一視するため)。未登録のメールアドレスも同じように入力ミスを数える(登録の有無を推測させない)。宛先ごとの送信回数の上限(1時間10回)はIPに関係なく効かせる(`LoginCodeService::send()` 内で数える。ミドルウェアではなくサービスで数えるのは、ロック解除でリセットできるようにするため)。ロックの解除は `LoginCodeService::unlock()`(入力ミスの回数と送信回数をリセット)。社内メンバーはユーザー編集画面から、サーバーでは `app:unlock-login` で解除する
+- ログイン: 入力ミスの回数はユーザーID単位で数える(`LoginCodeService::failureKey()`)。メールアドレスの照合はDBの `=` だけに頼らず、PHPで完全一致も確認する(MySQLの `utf8mb4_unicode_ci` は「à」と「a」、全角と半角を同一視するため)。未登録のメールアドレスも同じように入力ミスを数える(登録の有無を推測させない)。宛先ごとの送信回数の上限(1時間10回)はIPに関係なく効かせる(`LoginCodeService::send()` 内で数える。ミドルウェアではなくサービスで数えるのは、ロック解除でリセットできるようにするため)。入力ミスの上限は1時間10回・1日30回(`MAX_FAILURES_PER_DAY`。1時間ごとのロックが解けるたびに試し続ける総当たりを防ぐ)・1つのコード5回で、**回数は照合の前に数える**(同時に大量に送信されても上限を超えて照合させない。コードの回数はDB上で `increment` してから照合する)。ロックの解除は `LoginCodeService::unlock()`(入力ミスの回数(1時間・1日)と送信回数をリセット)。社内メンバーはユーザー編集画面から、サーバーでは `app:unlock-login` で解除する
 - 見られないプロジェクトのもの(課題・コメント・添付)は、閲覧以外の操作(削除など)でも 403 ではなく 404 を返す(Policyで `canAccessProject()` を先に確認して `Response::denyAsNotFound()`)
 - クエリ文字列は `(string) $request->query()` で文字列化しない(`?q[]=x` で500になる)。`Controller::queryString()` を使う
 - メール本文のリンクは `Portal::routeFor()`(常に APP_URL 基準)で作る。`route()` をそのまま使うとHostヘッダーの偽装でリンクを書き換えられる
-- 添付画像は5000万画素まで(`AttachmentService::MAX_IMAGE_PIXELS`。小さいファイルで巨大な画像を作れるため)。添付の配信は `Cache-Control: private, no-cache` + ETag(権限を毎回確認させ、変更が無ければ304)
+- エラー画面の「前の画面に戻る」など、Referer 由来のURLは `is_same_site_url()`(スキーム・ホスト・ポートを比べる)で確かめる。先頭の文字列だけで比べない(`issues.example.com.evil.example` を通してしまう)
+- 添付画像は5000万画素まで(`AttachmentService::MAX_IMAGE_PIXELS`。拡張子ではなく中身(finfo)で画像かどうかを判定して確認する。小さいファイルで巨大な画像を作れるため)。添付の配信は `Cache-Control: private, no-cache` + ETag(権限を毎回確認させ、変更が無ければ304)
 - セキュリティ関連のヘッダー(X-Frame-Options 等)は `SecurityHeaders` ミドルウェアで全応答に付ける(Nginxの設定例には書かない)
 - インストーラ: 改行などの制御文字・不正なホスト名は受け付けない(`InstallerService::assertSafeSettings()`)。Nginx の設定に入るドメインも英数字・ドット・ハイフンに限る(`app:nginx-config`)
 
@@ -80,9 +81,9 @@
 - インストーラは `.env` を `app/Support/Installer/EnvFile.php` で書き換える(記号入りパスワードも安全に引用)。**APP_KEYは未設定のときだけ生成**し、再実行(--force)でも作り直さない(作り直すと既存データが復号できなくなる)
 - インストーラに設定項目を足したら `tests/Standalone/InstallCommandTest.php` も更新する(新しい質問を足すと、答えていない既存テストが失敗する)
 - 完了時の「次にやること」(`InstallerService::nextSteps()`)は、PHP-FPM の実行ユーザー(`App\Support\Installer\PhpFpmUser` が www.conf から調べる)で権限・cron のコマンドを表示する(コマンド版はSSHのユーザーで動くため。権限の変更はインストールの後に行う)
-- **サーバー設定スクリプト** `deploy/setup-server.sh`(VPS用・root で実行。インストール後に使う。.env が無ければ止まる): 書き込み権限・Nginx(`/etc/nginx/conf.d/mushitori.conf`)・cron をまとめて行う。**最初に内容を表示して確認してから実行し、同じドメインの設定が他のファイルにあれば Nginx は変えない・`nginx -t` が通らなければ元に戻す**(1台に複数のサイトがあるサーバーを壊さないため。この安全策を外さない)。Nginx の設定の中身は `php artisan app:nginx-config`(`InstallerService::nginxConfig()`。コマンド版インストーラと共通)で作り、Webサーバーの実行ユーザーで動かす(root で artisan を動かすと storage に root 所有のファイルができるため)。テストは `tests/Standalone/SetupServerScriptTest.php`(chown・nginx・crontab 等を記録するだけの代役に置き換えて実行。Windows では Git の bash を使う)
+- **サーバー設定スクリプト** `deploy/setup-server.sh`(VPS用・root で実行。インストール後に使う。.env が無ければ止まる): 書き込み権限・Nginx(`/etc/nginx/conf.d/mushitori.conf`)・cron をまとめて行う。**権限の持ち方**: `storage` は Webサーバーの所有、`bootstrap/cache` は設置したユーザー:Webサーバーのグループ・g+w・setgid(composer の package:discover と Web の両方が書き込めるように)、`.env` は設置したユーザー:Webサーバーのグループ・640。chown は `-h`(シンボリックリンク先を変えない)。SQLite のパスは設置フォルダの中だけ扱う(.env を書き換えられても他の場所の所有者を root で変えさせない)。**最初に内容を表示して確認してから実行し、同じドメインの設定が他のファイルにあれば Nginx は変えない・`nginx -t` が通らなければ元に戻す**(1台に複数のサイトがあるサーバーを壊さないため。この安全策を外さない)。**Nginx の設定はスクリプト自身が deploy/nginx のテンプレートから作る**(PHP を使うと、Webサーバーのユーザーが書き込める bootstrap/cache を読み込んだ出力を root が信用することになるため)。置き換える内容は `InstallerService::nginxConfig()`(コマンド版インストーラ・`app:nginx-config`)と同じにし、一致はテストで確認する。HTTPS の証明書が無ければ HTTP のテンプレートを置き、`certbot --nginx` を案内する(証明書が無いと `nginx -t` が通らないため)。テストは `tests/Standalone/SetupServerScriptTest.php`(chown・nginx・crontab 等を記録するだけの代役に置き換えて実行。Windows では Git の bash を使う)
 - `public/.user.ini` は php-fpm が読み込むPHP設定(添付の上限など)。値は `deploy/php/99-mushitori.ini` と揃える(`DeployConfigTest`)
-- **アップデート**: `update.sh`(git で設置した場合のみ。更新前のバックアップ(失敗したら中止) → メンテナンスモード → git pull → composer install → migrate → キャッシュの作り直し)
+- **アップデート**: `update.sh`(git で設置した場合のみ。更新前のバックアップ(失敗したら中止) → メンテナンスモード → git pull → composer install → migrate → キャッシュの作り直し)。git pull・composer は実行したユーザーで、**artisan は Webサーバーのユーザーで実行する**(`sudo -u`。storage は Webサーバーの所有のため。README の artisan の例も `sudo -u apache php artisan …` にする)
   - **テーブルの変更は必ず新しいマイグレーションファイルで行う**(適用済みのファイルを書き換えても、既存の環境には反映されない)。既存データの変換もマイグレーションに書く
   - 1つのマイグレーションには1つの変更だけにする(MySQLではテーブルの変更をトランザクションで戻せないため、途中で失敗したときに、どこまで反映されたか分かるように)
   - .env に新しい設定を足すときは、未設定でも動く既定値を config に書く(アップデートでは .env を書き換えないため)

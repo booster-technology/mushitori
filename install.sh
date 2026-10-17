@@ -2,9 +2,9 @@
 #
 # ムシトリ インストールスクリプト(Linux / macOS)
 #
-#   ./install.sh                 … 対話形式でインストール(本番・お試しどちらも)
-#   ./install.sh --dev           … 開発用(テストツールも含めて)インストール
-#   ./install.sh --no-interaction --mode=local --db=sqlite ...
+#   bash install.sh                 … 対話形式でインストール(本番・お試しどちらも)
+#   bash install.sh --dev           … 開発用(テストツールも含めて)インストール(--dev は最初に書く)
+#   bash install.sh --no-interaction --mode=local --db=sqlite ...
 #                                … 質問せずに自動インストール(指定できる項目は php artisan app:install --help)
 #
 # 本番サーバーでは、最後にサーバーの設定(書き込み権限・Nginx・cron。deploy/setup-server.sh)も続けて行えます

@@ -90,12 +90,15 @@ class AttachmentService
             if (! $value instanceof UploadedFile) {
                 return;
             }
-            $extension = strtolower($value->getClientOriginalExtension());
-            if (! in_array($extension, ['png', 'jpg', 'jpeg', 'gif', 'webp'], true)) {
+            // 拡張子が画像の場合に加えて、中身が画像の場合も確認する
+            // (中身は巨大な画像なのに拡張子を .txt などにして、画素数の上限をすり抜けられないように。保存・表示は中身で画像と判定するため)
+            $isImageExtension = in_array(strtolower($value->getClientOriginalExtension()), ['png', 'jpg', 'jpeg', 'gif', 'webp'], true);
+            $isImageContent = in_array((string) @(new \finfo(FILEINFO_MIME_TYPE))->file($value->getRealPath()), self::IMAGE_MIME_TYPES, true);
+            if (! $isImageExtension && ! $isImageContent) {
                 return;
             }
             $size = @getimagesize($value->getRealPath());
-            if (! in_array($value->getMimeType(), self::IMAGE_MIME_TYPES, true) || $size === false) {
+            if (! $isImageContent || $size === false) {
                 $fail('「'.$value->getClientOriginalName().'」は画像ファイルとして読み込めません。');
 
                 return;

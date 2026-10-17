@@ -54,7 +54,7 @@ PHP-FPMの同時処理数（`pm.max_children`）は「(サーバーのメモリ 
 
 ## インストール
 
-SSHでサーバーにログインし、コマンドで設置します。VPS なら、次の2つのコマンドで設置からサーバーの設定まで終わります（`install.sh` の最後に、続けてサーバーの設定を行うか聞かれます）。
+SSHでサーバーにログインし、コマンドで設置します。VPS では、`git clone` で取得した後、次の2つのコマンドで設置からサーバーの設定まで行えます（`install.sh` の最後に、続けてサーバーの設定を行うか聞かれます）。HTTPS の場合は、最後に certbot で証明書を取得します（詳しくは下の「本番サーバー」の手順）。
 
 ```bash
 bash install.sh                    # 依存パッケージ・.env・データベース・最初の管理者
@@ -102,10 +102,13 @@ sudo bash deploy/setup-server.sh   # 書き込み権限・Nginx・cron
    ```
 
    「本番サーバーで使う」を選ぶと、以下を順に聞かれます。MySQLのデータベースが無ければインストーラが作成します。
+   - サイト名・テーマカラー
    - 公開URL（ロードバランサーの後ろで動かすかどうかも）
    - データベース
    - メール送信（SMTP / Amazon SES / 送信しない）
-   - 最初の管理者のメールアドレス
+   - 社内用画面のURL（推測されにくい文字列を自動で入れます）
+   - 最初の管理者の氏名・メールアドレス
+   - 毎日の自動バックアップ
 
    依存パッケージは Composer で取得します（Composer が無ければ `install.sh` が公式サイトから取得します）。サーバーからインターネットに接続できる必要があります。
 
@@ -116,8 +119,15 @@ sudo bash deploy/setup-server.sh   # 書き込み権限・Nginx・cron
    ```
 
    手で行う場合は、インストーラの完了時に表示される「次にやること」に従います（PHP-FPM の実行ユーザーを調べて、実際のコマンドを表示します）。
-4. **HTTPS**: `sudo certbot --nginx` など（ALB でHTTPSを終端する場合は不要）
+4. **HTTPS**（ALB で HTTPS を終端する場合は不要）: 証明書がまだ無い場合、手順3ではいったん HTTP の設定が置かれます。続けて次を実行すると、証明書を取得して HTTPS の設定を追加します
+
+   ```bash
+   sudo certbot --nginx -d issues.example.com
+   ```
+
 5. `curl -I https://issues.example.com/.env` が `404` または `403` になることを確認する
+
+> VPS では、`php artisan` のコマンドは **Webサーバーのユーザーで実行**します（例: `sudo -u apache php artisan app:backup`。Ubuntu は `www-data`）。`storage` が Webサーバーの所有になっているためです。`./update.sh` は自動でそうします。
 
 ### サーバーの設定をまとめて行う（setup-server.sh）
 
@@ -130,12 +140,12 @@ sudo bash deploy/setup-server.sh --dry-run  # 何をするかを表示するだ�
 
 | 手順 | 内容 |
 |:--|:--|
-| 1. 書き込み権限 | `storage`・`bootstrap/cache` を PHP-FPM の実行ユーザー（`www.conf` から自動で調べる）の所有にする（SQLite の場合はデータベースのファイルも）。SELinux が有効なら書き込み用のラベルも付ける |
-| 2. Nginx | このサーバー用の設定（`php artisan app:nginx-config` で作成。ALB の後ろ・HTTPS・HTTPのみを自動で選択）を `/etc/nginx/conf.d/mushitori.conf` に置き、`nginx -t` が通ったときだけ再読み込みする。通らなければ元に戻す |
+| 1. 書き込み権限 | `storage` を PHP-FPM の実行ユーザー（`www.conf` から自動で調べる）の所有にする。`bootstrap/cache` は設置したユーザーと Webサーバーの両方が書き込めるようにし（`update.sh` が動くように）、`.env` は他のユーザーから読めないようにする（640）。SQLite の場合は、設置フォルダの中にあるデータベースのファイルも。SELinux が有効なら書き込み用のラベルも付ける |
+| 2. Nginx | `deploy/nginx` の設定例を、このサーバー（URL・設置場所・PHP-FPM のソケット）に合わせて `/etc/nginx/conf.d/mushitori.conf` に置き（ALB の後ろ・HTTPS・HTTPのみを自動で選択。HTTPS の証明書がまだ無ければ、いったん HTTP の設定）、`nginx -t` が通ったときだけ再読み込みする。通らなければ元に戻す |
 | 3. cron | PHP-FPM の実行ユーザーで `schedule:run` を毎分実行するよう登録する（登録済みなら何もしない） |
 
 - **1台に複数のサイトがあるサーバー向けの安全策**: 同じドメインの設定が他のファイル（`default.conf` など）にある場合は、Nginx の設定は変更しません。そのまま使い続けるか、そのファイルの該当する `server` ブロックを削除（コメントアウト）してから、もう一度実行してください。既存の `mushitori.conf` を置き換えるときは `mushitori.conf.bak.日時` に残します
-- `--url=`（公開URL）、`--behind-proxy`（ALB の後ろ）、`--web-user=apache`（実行ユーザーを指定）、`--nginx-conf=`（Nginx の設定ファイルの場所）、`--no-nginx`・`--no-cron`（その手順を行わない）、`--yes`（確認しない）も使えます。詳しくは `bash deploy/setup-server.sh --help`
+- `--url=`（公開URL）、`--behind-proxy`（ALB の後ろ。`--behind-proxy=no` で使わない）、`--web-user=apache`（実行ユーザーを指定）、`--nginx-conf=`（Nginx の設定ファイルの場所）、`--no-nginx`・`--no-cron`（その手順を行わない）、`--yes`（確認しない）も使えます。詳しくは `bash deploy/setup-server.sh --help`
 - Apache の場合は Nginx の手順を行いません（権限と cron だけ設定します。Apache の設定は「Webサーバー・PHPの設定例」を参照）
 
 ### SSHが使えるレンタルサーバー
@@ -202,7 +212,7 @@ bash install.sh --no-interaction --mode=production --name="課題管理" --url=h
 | [deploy/php/99-mushitori.ini](deploy/php/99-mushitori.ini) | PHP（投稿の上限・処理時間など） |
 | [deploy/setup-server.sh](deploy/setup-server.sh) | 権限・Nginx・cron をまとめて設定するスクリプト（「サーバーの設定をまとめて行う」を参照） |
 
-`php artisan app:nginx-config --url=https://issues.example.com` で、このサーバー用（URL・設置場所・PHP-FPM のソケットに合わせたもの）の Nginx 設定を表示できます（`--behind-proxy` で ALB 用）。コマンド版インストーラは、Nginx の設定（URL・設置場所に合わせたもの）を自動で作ります。Apache の場合は、設定例の `issues.example.com`（URL）・`/var/www/mushitori`（設置場所）・PHP-FPM のソケットのパスを書き換えて使ってください（`.htaccess` は使わず、`AllowOverride None` で動きます）。
+`php artisan app:nginx-config --url=https://issues.example.com` で、このサーバー用（URL・設置場所・PHP-FPM のソケットに合わせたもの）の Nginx 設定を表示できます（`--behind-proxy` で ALB 用）。インストーラも、本番モードでは同じ Nginx の設定を `storage/app/install/nginx.conf` に作ります。Apache の場合は、設定例の `issues.example.com`（URL）・`/var/www/mushitori`（設置場所）・PHP-FPM のソケットのパスを書き換えて使ってください（`.htaccess` は使わず、`AllowOverride None` で動きます）。
 
 画像などの添付ファイルの投稿に必要な値は、すべての設定で揃えています。どれか1つでも小さいと、大きな画像を添付したときにエラーになります。
 
@@ -252,7 +262,7 @@ HTTPSをALBで終端し、サーバーへはHTTPで転送する構成に対応�
 
 ## 使い始めの流れ
 
-1. 社内用のログイン画面（`/staff/login`、URLはインストール時に変更可）から、管理者のメールアドレスでログイン
+1. 社内用のログイン画面（インストールの完了時に表示されたURL。本番は `/staff-xxxxxx/login` のような推測されにくいURL）から、管理者のメールアドレスでログイン
 2. 「プロジェクト管理」でプロジェクト（例: `WEB` = コーポレートサイト保守）を作成
 3. 「ユーザー管理」でお客様を登録し、プロジェクトに参加させる（ログイン案内メールが届きます）
 4. お客様が `/login` からログインして課題を起票 → 社内に通知 → コメントでやり取り
@@ -267,20 +277,20 @@ HTTPSをALBで終端し、サーバーへはHTTPで転送する構成に対応�
 - **自動で完全に削除**: 保管期間を過ぎたものは、毎日4時に画像などの添付ファイルの実体も含めて完全に削除します（cron で `schedule:run` が動いている必要があります。`TRASH_RETENTION_DAYS=0` にすると自動では削除しません）
 - **すぐに完全に削除**: 個人情報が写った画像を誤って添付した場合などは、社内メンバーがゴミ箱の「完全に削除」ですぐに消せます（誰が消したかはログに残ります）
 - コメントを完全に削除しても、状態などの変更履歴は課題の経緯として残ります
-- 完全に削除したデータも、バックアップには保管世代数（`BACKUP_KEEP`、既定7日分）のあいだ残ります。削除したデータは最長で「保管期間 + バックアップの保管期間」（既定で37日）でサーバーから消えます
+- 完全に削除したデータも、残しているバックアップ（`BACKUP_KEEP`、既定は新しいものから7個）には残ります。毎日自動でバックアップしている場合、削除したデータは最長で「保管期間 + 約7日」（既定で約37日）でサーバーから消えます
 
 ## バックアップ
 
 ```bash
-php artisan app:backup
+sudo -u apache php artisan app:backup   # VPS では Webサーバーのユーザーで実行(Ubuntu は www-data)
 ```
 
 データベース・添付ファイル・`.env`・復元手順（RESTORE.txt）を1つのファイル（`storage/backups/backup-日時.zip`）にまとめます。
 
-- **毎日自動で取る**: `.env` で `BACKUP_DAILY=true`（本番インストール時に選択可）。毎日3時に実行し、7日分を残します（`BACKUP_KEEP`）
+- **毎日自動で取る**: `.env` で `BACKUP_DAILY=true`（本番インストール時に選択可）。毎日3時に実行します。バックアップは新しいものから7個を残します（`BACKUP_KEEP`。毎日自動なら約7日分。`./update.sh` のたびにも1個作られます）
 - **保存先を変える**: `BACKUP_PATH=/mnt/backup/mushitori` など。サーバーの故障に備えて、別ディスクやS3などへのコピーもおすすめします
 - **MySQLの場合**: `mysqldump` を使います（見つからない場合は `MYSQLDUMP_PATH` で場所を指定）
-- **復元**: バックアップ内の RESTORE.txt の手順に従ってください（DBの取り込み → 添付ファイルのコピー → `.env` の配置）
+- **復元**: バックアップ内の RESTORE.txt の手順に従ってください（`.env` の配置 → データベースの取り込み → 添付ファイルのコピー → `php artisan migrate --force` → `php artisan optimize:clear`）
 - バックアップにはお客様のデータとパスワードが含まれるため、取り扱いに注意してください。`.env` を含めない場合は `--without-env`
 
 ## アップデート
@@ -291,22 +301,29 @@ php artisan app:backup
 ./update.sh
 ```
 
+- 設置したユーザーで実行します。`git pull`・`composer install` は実行したユーザーで、バックアップ・データベースの更新・キャッシュの作り直しは Webサーバーのユーザーで行います（`sudo -u` を使うので、sudo のパスワードを聞かれることがあります）
+- 本番では最後に設定をキャッシュします（`config:cache`）。その後に `.env` を変えた場合は、`sudo -u apache php artisan config:cache` を実行すると反映されます
 - git で設置したフォルダでのみ使えます
-- VPS では、更新後に `sudo bash deploy/setup-server.sh` で書き込み権限を付け直しておくと安全です（更新中に作られたファイルが、実行したユーザーの所有になることがあるため）
+
+**git 以外で設置した場合**（以前の配布用zipなど）は、git で設置し直してから使います。
+
+1. 新しいフォルダに `git clone` し、`composer install --no-dev --optimize-autoloader` で依存パッケージを入れる（インストーラは実行しない）
+2. 今のフォルダから `.env` と `storage/app/private`（添付ファイル）、SQLite の場合はデータベースのファイルを、新しいフォルダにコピーする
+3. 新しいフォルダで `php artisan migrate --force` を実行し、`sudo bash deploy/setup-server.sh` で権限と Nginx の設定（設置場所）を直す
 
 ## 困ったとき
 
 | 症状 | 対処 |
 |:--|:--|
-| 「入力ミスが続いたため、一時的にログインできません」と表示される | 認証コードを1時間に10回間違えるとロックされます（最初の入力ミスから1時間で自動解除）。すぐに解除するには、社内メンバーが「ユーザー管理」の編集画面で「ロックを解除」、またはサーバーで `php artisan app:unlock-login メールアドレス` |
-| 管理者が全員ログインできなくなった | `php artisan app:create-staff you@example.com` で社内メンバーを追加・復旧（ロックも解除されます） |
+| 「入力ミスが続いたため、一時的にログインできません」と表示される | 認証コードを1時間に10回間違えるとロックされます（最初の入力ミスから1時間で自動解除）。1日に30回間違えた場合は24時間ロックされます。すぐに解除するには、社内メンバーが「ユーザー管理」の編集画面で「ロックを解除」、またはサーバーで `sudo -u apache php artisan app:unlock-login メールアドレス` |
+| 管理者が全員ログインできなくなった | `sudo -u apache php artisan app:create-staff you@example.com` で社内メンバーを追加・復旧（ロックも解除されます） |
 | 認証コードのメールが届かない | `.env` の `MAIL_` の設定を確認。`storage/logs/laravel-日付.log` に送信エラーが出ていないか確認 |
 | 大きな画像が添付できない・送信に時間がかかってエラーになる | php.ini の `post_max_size`・`max_execution_time` と、Nginx の `client_max_body_size`・`fastcgi_read_timeout`（Apache は `LimitRequestBody`・`ProxyTimeout`、ALB はアイドルタイムアウト）を確認（「Webサーバー・PHPの設定例」を参照） |
 | フォームの送信先や画像・CSSが http:// になる（ALBの後ろ） | `.env` の `APP_URL` を `https://` で始まるURLにし、`TRUSTED_PROXIES` にALBのIPアドレスの範囲を設定（「ロードバランサー（AWS ALBなど）の後ろで動かす」を参照） |
 | 「Composer detected issues in your platform」と表示される・画面が真っ白になる | PHPのバージョンが 8.3 より古い可能性があります（`php -v` で確認）。PHP 8.3 以上にしてください（レンタルサーバーはコントロールパネルで変更。コマンドの `php` と Web の PHP のバージョンが違う場合もあります） |
 | ログに「Permission denied」が出る・画面がエラーになる | `storage`・`bootstrap/cache` に Webサーバー（PHP-FPM）が書き込めない状態です。`sudo bash deploy/setup-server.sh` で権限を付け直してください（cron を別のユーザーで動かしていると起きやすいので、cron も Webサーバーと同じユーザーで登録します） |
-| 設定を変えたい | `.env` を編集（`config:cache` している場合は `php artisan config:cache` を再実行） |
-| テーマカラーを変えたい | `.env` の `APP_THEME_COLOR` を `'#1E5AA8'` のように変更（`#` を含むので引用符で囲む） |
+| 設定を変えたい | `.env` を編集します。本番では `./update.sh` が設定をキャッシュするため、その後は `sudo -u apache php artisan config:cache` を実行すると反映されます |
+| テーマカラーを変えたい | `.env` の `APP_THEME_COLOR` を `'#1E5AA8'` のように変更（`#` を含むので引用符で囲む。反映は上と同じ） |
 
 ## 機能と権限
 
@@ -314,7 +331,7 @@ php artisan app:backup
 |:--|:--|:--|
 | プロジェクト閲覧 | 全プロジェクト | 参加しているプロジェクトのみ |
 | 課題の起票・コメント・状態変更 | ○ | ○ |
-| 課題の編集（件名・詳細・添付） | ○ | 自分が起票した課題のみ |
+| 課題の編集（件名・種別・詳細・添付） | ○ | 自分が起票した課題のみ |
 | 担当者・優先度・期限日の変更 | ○ | × |
 | 課題・他人のコメントの削除 | ○ | × |
 | プロジェクト・ユーザー管理 | ○ | × |

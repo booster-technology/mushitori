@@ -195,7 +195,7 @@ test('コードを再発行しても、1アカウントあたりの入力ミス�
 
     // 正しい最新のコードでもログインできず、ロック中のメッセージになる
     $this->travel(2)->minutes();
-    $this->post('/login/code', ['code' => $code])->assertSessionHasErrors(['code' => '認証コードの入力ミスが続いたため、一時的にログインできません。1時間ほどおいてから再度お試しください。']);
+    $this->post('/login/code', ['code' => $code])->assertSessionHasErrors(['code' => '認証コードの入力ミスが続いたため、一時的にログインできません。時間をおいてから再度お試しいただくか、担当者にロックの解除を依頼してください。']);
     expect(Auth::guard('customer')->check())->toBeFalse();
 
     // 1時間経てば再びログインできる

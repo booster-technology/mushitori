@@ -20,7 +20,7 @@ labels: bug
 
 ## 環境
 
-- ムシトリのバージョン(またはコミット):
+- ムシトリのコミット(設置したフォルダで git log -1 --format='%h %cd'):
 - PHP のバージョン:
 - データベース(MySQL / MariaDB / SQLite とバージョン):
 - Webサーバー(Nginx / Apache):
