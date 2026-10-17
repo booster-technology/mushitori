@@ -56,6 +56,16 @@ class UserService
     }
 
     /**
+     * 代理起票で起票者として選べるお客様(そのプロジェクトに参加している有効な人のみ。会社名 → 氏名の順)
+     *
+     * @return Collection<int, User>
+     */
+    public function reportableCustomers(Project $project): Collection
+    {
+        return $project->customerMembers()->active()->orderBy('company_name')->orderBy('name')->get();
+    }
+
+    /**
      * プロジェクトの課題に担当者として設定されている社内メンバー(お客様用の一覧画面の「担当者」での絞り込み用。
      * お客様には、関係のない社内メンバーの名前まで見せない)
      *

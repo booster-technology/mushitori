@@ -29,6 +29,7 @@ class Issue extends Model
         'priority',
         'status',
         'reporter_id',
+        'registered_by',
         'assignee_id',
         'due_date',
         'closed_at',
@@ -53,6 +54,14 @@ class Issue extends Model
     public function reporter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reporter_id');
+    }
+
+    /**
+     * 代わりに登録した社内メンバー(代理起票の場合のみ。起票者本人が登録した場合は null)
+     */
+    public function registeredBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'registered_by');
     }
 
     public function assignee(): BelongsTo

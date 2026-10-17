@@ -32,8 +32,12 @@ class IssueService
         /** @var list<Attachment> $stored */
         $stored = [];
 
+        // 代理起票: 社内メンバーは、電話・メールで受けた内容をお客様の課題として登録できる
+        // (起票者がお客様になるので、対応の経過がお客様にも通知される)。お客様の入力値は無視する
+        $reporterId = $actor->isStaff() && ! empty($data['reporter_id']) ? (int) $data['reporter_id'] : $actor->id;
+
         try {
-            $issue = DB::transaction(function () use ($project, $actor, $data, $files, &$stored) {
+            $issue = DB::transaction(function () use ($project, $actor, $data, $files, $reporterId, &$stored) {
                 $locked = Project::whereKey($project->id)->lockForUpdate()->firstOrFail();
                 $number = $locked->next_issue_number;
                 $locked->increment('next_issue_number');
@@ -46,7 +50,9 @@ class IssueService
                     'type' => $data['type'],
                     'priority' => $data['priority'],
                     'status' => IssueStatus::Open,
-                    'reporter_id' => $actor->id,
+                    'reporter_id' => $reporterId,
+                    // 代わりに登録した人(本人が登録した場合は記録しない)
+                    'registered_by' => $reporterId !== $actor->id ? $actor->id : null,
                     // 担当者・期限日は社内メンバーのみ設定できる
                     'assignee_id' => $actor->isStaff() ? ($data['assignee_id'] ?? null) : null,
                     'due_date' => $actor->isStaff() ? ($data['due_date'] ?? null) : null,
@@ -66,7 +72,7 @@ class IssueService
             throw $e;
         }
 
-        $issue->load(['project', 'reporter', 'assignee']);
+        $issue->load(['project', 'reporter', 'registeredBy', 'assignee']);
         $this->notifications->issueCreated($issue, $actor);
 
         return $issue;
@@ -126,6 +132,7 @@ class IssueService
         return $issue->load([
             'project',
             'reporter',
+            'registeredBy',
             'assignee',
             'attachments',
             'comments' => fn ($q) => $q->withTrashed()->with(['user', 'attachments'])->orderBy('created_at')->orderBy('id'),

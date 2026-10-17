@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\IssueStatus;
+use App\Mail\IssueCommentedMail;
 use App\Mail\IssueCreatedMail;
 use App\Models\Attachment;
 use App\Models\Issue;
@@ -113,6 +114,94 @@ test('担当者にお客様や無効な社内メンバーは指定できない',
     $this->post('/staff/projects/WEB/issues', issuePayload(['assignee_id' => $inactiveStaff->id]))
         ->assertSessionHasErrors('assignee_id');
     expect(Issue::count())->toBe(0);
+});
+
+test('社内メンバーはお客様の代わりに課題を登録でき(代理起票)、お客様に登録のお知らせが届く', function () {
+    loginAs($this->staff);
+    $this->post('/staff/projects/WEB/issues', issuePayload(['reporter_id' => $this->customer->id]))
+        ->assertRedirect('/staff/issues/WEB-1');
+
+    // 起票者はお客様、代わりに登録した人は社内メンバー
+    $issue = Issue::first();
+    expect($issue->reporter_id)->toBe($this->customer->id)
+        ->and($issue->registered_by)->toBe($this->staff->id);
+
+    // お客様には「お問い合わせの内容を登録した」旨のメール(お客様用のURL)が届き、登録した本人には届かない
+    Mail::assertSent(IssueCreatedMail::class, function (IssueCreatedMail $mail) {
+        $html = $mail->render();
+
+        return $mail->hasTo($this->customer->email)
+            && str_contains($html, 'お問い合わせいただいた内容を')
+            && str_contains($html, url('/issues/WEB-1'))
+            && ! str_contains($html, '/staff/');
+    });
+    Mail::assertNotSent(IssueCreatedMail::class, fn ($mail) => $mail->hasTo($this->staff->email));
+
+    // お客様の画面では自分の課題として表示され、代わりに登録した人も分かる。自分が起票した課題として編集できる
+    loginAs($this->customer);
+    $this->get('/issues/WEB-1')->assertOk()->assertSee('社内 太郎 が代わりに登録');
+    $this->put('/issues/WEB-1', ['title' => 'お客様が補足した件名', 'type' => 'bug'])->assertRedirect('/issues/WEB-1');
+    expect($issue->fresh()->title)->toBe('お客様が補足した件名');
+});
+
+test('代理起票した課題のコメントは、起票者のお客様に通知される', function () {
+    loginAs($this->staff);
+    $this->post('/staff/projects/WEB/issues', issuePayload(['reporter_id' => $this->customer->id]));
+    $colleague = User::factory()->staff()->create();
+    Mail::fake();
+
+    loginAs($colleague);
+    $this->post('/staff/issues/WEB-1/comments', ['body' => '確認しました', 'status' => 'in_progress']);
+
+    Mail::assertSent(IssueCommentedMail::class, fn ($mail) => $mail->hasTo($this->customer->email));
+});
+
+test('社内メンバーが自分を起票者として登録した場合は、お客様に通知されず代理の記録も残らない', function () {
+    loginAs($this->staff);
+    $this->post('/staff/projects/WEB/issues', issuePayload(['reporter_id' => '']));
+
+    $issue = Issue::first();
+    expect($issue->reporter_id)->toBe($this->staff->id)
+        ->and($issue->registered_by)->toBeNull();
+    Mail::assertNotSent(IssueCreatedMail::class, fn ($mail) => $mail->hasTo($this->customer->email));
+    $this->get('/staff/issues/WEB-1')->assertDontSee('が代わりに登録');
+});
+
+test('代理起票の起票者には、そのプロジェクトの有効なお客様しか選べない', function () {
+    loginAs($this->staff);
+    $inactiveCustomer = User::factory()->customer()->inactive()->create();
+    $this->project->members()->attach($inactiveCustomer->id);
+    $anotherStaff = User::factory()->staff()->create();
+    $this->project->members()->attach($anotherStaff->id);
+
+    foreach ([$this->otherCustomer->id, $inactiveCustomer->id, $anotherStaff->id, 999999] as $reporterId) {
+        $this->post('/staff/projects/WEB/issues', issuePayload(['reporter_id' => $reporterId]))
+            ->assertSessionHasErrors('reporter_id');
+    }
+    expect(Issue::count())->toBe(0);
+});
+
+test('お客様は起票者を指定できない(他人を指定しても自分が起票者になる)', function () {
+    $colleague = User::factory()->customer()->create();
+    $this->project->members()->attach($colleague->id);
+    loginAs($this->customer);
+
+    $this->post('/projects/WEB/issues', issuePayload(['reporter_id' => $colleague->id]))->assertRedirect('/issues/WEB-1');
+
+    $issue = Issue::first();
+    expect($issue->reporter_id)->toBe($this->customer->id)
+        ->and($issue->registered_by)->toBeNull();
+});
+
+test('課題の追加画面の起票者の選択肢は、社内用の画面にだけ、そのプロジェクトのお客様が出る', function () {
+    loginAs($this->staff);
+    $this->get('/staff/projects/WEB/issues/create')->assertOk()
+        ->assertSee('name="reporter_id"', false)
+        ->assertSee($this->customer->displayName())
+        ->assertDontSee($this->otherCustomer->displayName());
+
+    loginAs($this->customer);
+    $this->get('/projects/WEB/issues/create')->assertOk()->assertDontSee('name="reporter_id"', false);
 });
 
 test('必須項目が無いと登録できない', function () {

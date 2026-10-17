@@ -22,12 +22,14 @@ use Throwable;
 class NotificationService
 {
     /**
-     * 新規課題の通知: プロジェクトの社内メンバー + 担当者(操作した本人は除く)
+     * 新規課題の通知: プロジェクトの社内メンバー + 担当者 + 起票者(操作した本人は除く)。
+     * 起票者に届くのは、社内メンバーがお客様の代わりに登録した場合(代理起票)だけ
      */
     public function issueCreated(Issue $issue, User $actor): void
     {
         $recipients = $this->staffWatchers($issue->project)
-            ->push($issue->assignee);
+            ->push($issue->assignee)
+            ->push($issue->reporter);
 
         foreach ($this->finalize($recipients, $issue, $actor) as $recipient) {
             $this->send($recipient, new IssueCreatedMail($issue, $actor, $recipient));

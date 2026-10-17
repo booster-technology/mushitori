@@ -69,6 +69,20 @@
                         </div>
 
                         @if (portal() === 'staff')
+                            {{-- 代理起票: 電話・メールで受けた内容を、お客様の課題として登録する --}}
+                            @if ($customers->isNotEmpty())
+                                <div class="mb-3">
+                                    <label for="reporter_id" class="form-label fw-semibold">起票者</label>
+                                    <select id="reporter_id" name="reporter_id" class="form-select @error('reporter_id') is-invalid @enderror">
+                                        <option value="">自分（{{ auth()->user()->name }}）</option>
+                                        @foreach ($customers as $customer)
+                                            <option value="{{ $customer->id }}" @selected((string) old('reporter_id') === (string) $customer->id)>{{ $customer->displayName() }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('reporter_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                    <div class="form-text">電話・メールで受けた内容は、お客様を選ぶとお客様の課題として登録され、対応の経過がお客様にもメールで届きます。</div>
+                                </div>
+                            @endif
                             <div class="mb-3">
                                 <label for="assignee_id" class="form-label fw-semibold">担当者</label>
                                 <select id="assignee_id" name="assignee_id" class="form-select @error('assignee_id') is-invalid @enderror">

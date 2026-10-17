@@ -65,6 +65,8 @@ class IssueController extends Controller
             'defaultType' => $type,
             'defaultPriority' => IssuePriority::Normal,
             'staffUsers' => $this->users->assignableStaff(),
+            // 代理起票の起票者の選択肢(社内メンバーの画面だけで使う)
+            'customers' => $request->user()->isStaff() ? $this->users->reportableCustomers($project) : collect(),
             'templates' => collect(IssueType::cases())
                 ->mapWithKeys(fn (IssueType $t) => [$t->value => $t->descriptionTemplate()]),
         ]);

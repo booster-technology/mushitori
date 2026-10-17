@@ -71,6 +71,8 @@ class DemoSeeder extends Seeder
                 'priority' => $priority,
                 'status' => $status,
                 'reporter_id' => $customer->id,
+                // 2件目は電話で受けた内容を社内メンバーが代わりに登録した例(代理起票)
+                'registered_by' => $i === 1 ? $staff->id : null,
                 'assignee_id' => $assignee?->id,
                 'due_date' => $i < 2 ? today()->addDays($i * 3 - 1) : null,
                 'closed_at' => $status === IssueStatus::Closed ? now() : null,

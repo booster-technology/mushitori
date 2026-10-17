@@ -39,6 +39,10 @@
                 <div class="d-flex flex-wrap align-items-center gap-2 small text-muted mb-3">
                     <x-user-chip :user="$issue->reporter" :company="true" />
                     <span>が {{ $issue->created_at->format('Y/m/d H:i') }} に登録</span>
+                    {{-- 代理起票(社内メンバーがお客様の代わりに登録した場合) --}}
+                    @if ($issue->registeredBy)
+                        <span>（{{ $issue->registeredBy->name }} が代わりに登録）</span>
+                    @endif
                 </div>
 
                 {{-- 属性 --}}

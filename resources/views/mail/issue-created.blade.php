@@ -4,7 +4,14 @@
 
 {{ mail_escape($recipient->name) }} 様
 
+@if ($issue->registered_by && $recipient->id === $issue->reporter_id)
+{{-- 代理起票: お客様には、お問い合わせの内容を課題として登録したことを知らせる --}}
+お問い合わせいただいた内容を、{{ mail_escape($actor->displayName()) }} が課題として登録しました。今後の対応状況は、この課題でお知らせします。
+@elseif ($issue->registered_by)
+{{ mail_escape($actor->displayName()) }} さんが、{{ mail_escape($issue->reporter->displayName()) }} さんの代わりに課題を登録しました。
+@else
 {{ mail_escape($actor->displayName()) }} さんが課題を登録しました。
+@endif
 
 <x-mail::table>
 | 項目 | 内容 |

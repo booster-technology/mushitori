@@ -31,6 +31,13 @@ class StoreIssueRequest extends FormRequest
             'type' => ['required', Rule::enum(IssueType::class)],
             'priority' => ['required', Rule::enum(IssuePriority::class)],
             'description' => ['nullable', 'string', 'max:20000'],
+            // 代理起票の起票者は、このプロジェクトに参加している有効なお客様のみ(社内メンバーだけが指定できる。お客様の入力値は受け取らない)
+            'reporter_id' => [
+                Rule::excludeIf(fn () => ! $this->user()?->isStaff()),
+                'nullable', 'integer',
+                Rule::exists('users', 'id')->where('role', UserRole::Customer->value)->where('is_active', true),
+                Rule::exists('project_user', 'user_id')->where('project_id', $this->route('project')->id),
+            ],
             // 担当者は有効な社内メンバーのみ(お客様の入力値はサービス側で無視する)
             'assignee_id' => ['nullable', 'integer', Rule::exists('users', 'id')
                 ->where('role', UserRole::Staff->value)->where('is_active', true)],
@@ -45,6 +52,7 @@ class StoreIssueRequest extends FormRequest
             'type' => '種別',
             'priority' => '優先度',
             'description' => '詳細',
+            'reporter_id' => '起票者',
             'assignee_id' => '担当者',
             'due_date' => '期限日',
             'attachments' => '添付ファイル',
