@@ -321,21 +321,11 @@ php artisan app:backup
 
 詳しい仕様は [docs/spec.md](docs/spec.md) を参照してください。
 
-## 開発に参加する
+## 不具合報告・要望
 
-```bash
-bash install.sh --dev                 # テストツールも含めてインストール（お試し・SQLiteを選択）
-php -d upload_max_filesize=20M -d post_max_size=120M -S 127.0.0.1:8000 -t public scripts/dev-router.php
-php artisan db:seed --class=DemoSeeder  # サンプルデータ
-php artisan test                      # テスト（Pest）
-./vendor/bin/pint                     # コード整形
-```
-
-- 依存パッケージは PHP 8.3 でも動く版に固定しています（`composer.json` の `config.platform.php`）。PHP 8.4 の開発機で `composer update` しても、PHP 8.4 専用の版（Symfony 8 など）は入りません
-
-- 技術構成: Laravel 13 / Blade / Bootstrap 5・Alpine.js（どちらも同梱・npmやビルドは不要）/ Pest
-- 設計方針・注意点は [CLAUDE.md](CLAUDE.md) にまとめています
-- 不具合報告・要望は Issues へ。セキュリティ上の問題は [SECURITY.md](SECURITY.md) の方法で非公開でご連絡ください
+- 不具合の報告・要望・質問は [Issues](https://github.com/booster-technology/mushitori/issues) へお願いします
+- セキュリティ上の問題は、公開の Issue には書かず [SECURITY.md](SECURITY.md) の方法で非公開でご連絡ください
+- プルリクエスト（コードの修正提案）は当面受け付けていません。修正の提案も Issue でお知らせください（詳しくは [CONTRIBUTING.md](CONTRIBUTING.md)）
 
 ## ライセンス
 

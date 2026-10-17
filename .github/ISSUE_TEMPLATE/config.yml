@@ -1,0 +1,9 @@
+# Issue の作成画面に表示する案内
+blank_issues_enabled: true
+contact_links:
+  - name: セキュリティ上の問題の報告(非公開)
+    url: https://github.com/booster-technology/mushitori/security/advisories/new
+    about: 脆弱性は公開の Issue には書かず、こちらから非公開でご報告ください
+  - name: 設置代行・カスタマイズのご相談
+    url: https://www.booster-technology.com/
+    about: 導入支援・機能追加などは開発元の株式会社ブースターテクノロジーまでお問い合わせください
