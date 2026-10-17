@@ -192,6 +192,7 @@
 | 添付ファイルの配信 | 権限を毎回確認する(`Cache-Control: private, no-cache` + ETag)。画像以外はダウンロードで返す |
 | ロードバランサー | 信頼する接続元は `.env` の `TRUSTED_PROXIES`(プライベートIPの範囲。`*` は使わない)。X-Forwarded-Host は信頼しない |
 | URL | 本番では画面・メールのURLを常に `APP_URL` を基準に作る(Hostヘッダーの偽装でリンクを書き換えられないように) |
+| セッションの Cookie | 名前はサイト名(`APP_NAME`)の英数字から作る(日本語だけのサイト名なら `mushitori-session`)。JavaScript からは読めない(httponly) |
 | インストール・更新 | Webの画面からはできない(SSHでコマンドを実行する) |
 
 ## 14. 設定(.env)

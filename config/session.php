@@ -127,9 +127,10 @@ return [
     |
     */
 
+    // サイト名が日本語だけの場合は英数字が残らず「-session」になってしまうため、「mushitori-session」にする
     'cookie' => env(
         'SESSION_COOKIE',
-        Str::slug((string) env('APP_NAME', 'laravel')).'-session'
+        (Str::slug((string) env('APP_NAME', 'laravel')) ?: 'mushitori').'-session'
     ),
 
     /*

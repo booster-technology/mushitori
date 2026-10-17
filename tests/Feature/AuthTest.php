@@ -214,3 +214,30 @@ test('使用済みのコードは再利用できない', function () {
     $this->post('/login', ['email' => 'c@example.com']);
     $this->post('/login/code', ['code' => $code])->assertSessionHasErrors('code');
 });
+
+test('セッションの Cookie 名は、サイト名が日本語だけでも「-session」にならない', function (string $appName, string $expected) {
+    // config/session.php を、指定したサイト名(APP_NAME)で読み直して確かめる
+    $backup = ['server' => $_SERVER['APP_NAME'] ?? null, 'env' => $_ENV['APP_NAME'] ?? null, 'putenv' => getenv('APP_NAME')];
+    try {
+        $_SERVER['APP_NAME'] = $_ENV['APP_NAME'] = $appName;
+        putenv('APP_NAME='.$appName);
+
+        expect((require config_path('session.php'))['cookie'])->toBe($expected);
+    } finally {
+        // 元の値に戻す(他のテストに影響させない)
+        if ($backup['server'] === null) {
+            unset($_SERVER['APP_NAME']);
+        } else {
+            $_SERVER['APP_NAME'] = $backup['server'];
+        }
+        if ($backup['env'] === null) {
+            unset($_ENV['APP_NAME']);
+        } else {
+            $_ENV['APP_NAME'] = $backup['env'];
+        }
+        putenv($backup['putenv'] === false ? 'APP_NAME' : 'APP_NAME='.$backup['putenv']);
+    }
+})->with([
+    '日本語だけ' => ['ムシトリ', 'mushitori-session'],
+    '英数字を含む' => ['Sample Tracker', 'sample-tracker-session'],
+]);
