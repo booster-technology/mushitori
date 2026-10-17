@@ -41,7 +41,7 @@
 - 画像は長辺 `AttachmentService::MAX_IMAGE_EDGE`(2560px)を超える場合だけ同じ形式のまま縮小して保存する(スクリーンショットの文字が読めることを優先。PNGは可逆のまま)。JPEGは縮小時にEXIFが消えるため、向きは `App\Support\JpegOrientation`(exif拡張不要の自前解析)で画素に反映してから保存する。GDのメモリ不足はcatchできないので、画像を展開する前に `ensureMemory()` で必要量(縮小後の画像分も含む)を確保する。1リクエストの上限は `IMAGE_MEMORY_LIMIT`(既定256M)。**回転は必ず縮小した後の小さい画像で行う**(元の大きさで回転するとメモリが倍必要)
 - 大きな画像はブラウザ側(`public/js/app.js` の `shrinkImage()`)でも送信前に縮小する(サーバーの負荷・通信量の削減)。縮小は1つずつ順番に行い、縮小中は送信できない。サーバー側の縮小はブラウザで縮小できなかった場合の保険
 - 添付ファイルはDBに格納しない(DB肥大化・バックアップ遅延・配信時のメモリ消費を避けるため)。ファイルはストレージ、メタデータのみDB
-- バックアップは `php artisan app:backup`(`app/Services/BackupService.php`)。DB(MySQLは mysqldump、SQLiteは VACUUM INTO)+添付+.env+復元手順を1ファイルにまとめる。`update.sh` は更新前に必ず実行する。`BACKUP_DAILY=true` で毎日3時に自動実行
+- バックアップは `php artisan app:backup`(`app/Services/BackupService.php`)。DB(MySQLは mysqldump、SQLiteは VACUUM INTO)+添付+.env+復元手順を1ファイルにまとめる。MySQL版の mysqldump には `--set-gtid-purged=OFF` を付ける(Amazon RDS など GTID が OFF 以外のサーバーでは、付けないと FLUSH TABLES WITH READ LOCK の権限が無くて失敗する。MariaDB版には無いオプションなので `--help` で確認してから付ける)。`update.sh` は更新前に必ず実行する。`BACKUP_DAILY=true` で毎日3時に自動実行
 - 添付ファイルは `local` ディスク(`storage/app/private`)に保存し、`AttachmentController` で権限チェックして配信する。`public` ディスクに置かないこと。画像以外は必ずダウンロード(`Content-Disposition: attachment`)で返す
 - SVG・HTMLは添付不可。画像拡張子のファイルは中身も画像であることを確認している(`AttachmentService::imageContentRule()`)
 - 課題番号は `projects.next_issue_number` を行ロックして採番する(`IssueService::create()`)

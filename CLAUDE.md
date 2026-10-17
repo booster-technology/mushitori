@@ -54,7 +54,7 @@
 - **削除は論理削除(ゴミ箱)。** プロジェクト・課題・コメント・添付ファイルは `App\Models\Concerns\Trashable` の `trashBy($actor)` で削除する(削除日時と削除した人を記録するだけで、データも添付ファイルの実体も消さない)。コメントを削除したら、その添付も一緒に論理削除する。ユーザーは削除せず「無効」にする
 - **物理削除は `App\Services\TrashService` だけ。** ゴミ箱で社内メンバーが「完全に削除」したとき、と保管期間(`TRASH_RETENTION_DAYS`、既定30日)を過ぎたものを毎日4時に自動で消すとき(`app:purge-trash`)に限り、添付ファイルの実体も含めて消す。完全に削除したコメントは、課題の経緯として変更履歴だけを残す(`purged_at`)。それ以外の場所で `forceDelete`・ファイルの削除・本文を空にする等をしない(`tests/Feature/SoftDeleteTest.php`・`TrashTest.php` で確認)。例外は、登録に失敗したときに保存済みのファイルを片付ける処理(`AttachmentService::deleteFiles()`。DBに記録されていないファイル)だけ
 - 添付ファイルはDBに格納しない(DB肥大化・バックアップ遅延・配信時のメモリ消費を避けるため)。ファイルはストレージ、メタデータのみDB
-- バックアップは `php artisan app:backup`(`app/Services/BackupService.php`)。DB(MySQLは mysqldump、SQLiteは VACUUM INTO)+添付+.env+復元手順を1ファイルにまとめる。`update.sh` は更新前に必ず実行する。`BACKUP_DAILY=true` で毎日3時に自動実行
+- バックアップは `php artisan app:backup`(`app/Services/BackupService.php`)。DB(MySQLは mysqldump、SQLiteは VACUUM INTO)+添付+.env+復元手順を1ファイルにまとめる。MySQL版の mysqldump には `--set-gtid-purged=OFF` を付ける(Amazon RDS など GTID が OFF 以外のサーバーでは、付けないと FLUSH TABLES WITH READ LOCK の権限が無くて失敗する。MariaDB版には無いオプションなので `--help` で確認してから付ける)。`update.sh` は更新前に必ず実行する。`BACKUP_DAILY=true` で毎日3時に自動実行
 - 添付ファイルは `local` ディスク(`storage/app/private`)に保存し、`AttachmentController` で権限チェックして配信する。`public` ディスクに置かないこと。画像以外は必ずダウンロード(`Content-Disposition: attachment`)で返す
 - SVG・HTMLは添付不可。画像拡張子のファイルは中身も画像であることを確認している(`AttachmentService::imageContentRule()`)
 - 課題番号は `projects.next_issue_number` を行ロックして採番する(`IssueService::create()`)

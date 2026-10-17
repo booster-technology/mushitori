@@ -5,9 +5,11 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\BackupService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -125,6 +127,40 @@ test('mysqldump が見つからない場合は、分かりやすいエラーで�
     expect(glob($this->backupDir.'/*') ?: [])->toBe([])
         ->and(glob($this->backupDir.'/.work-*') ?: [])->toBe([]);
 });
+
+test('MySQL の mysqldump では GTID の情報を出力しない(RDS 等で FLUSH TABLES の権限が無くてもダンプできるように)', function (string $help, bool $expectsGtidOption) {
+    config([
+        'database.connections.mysql_backup_test' => ['driver' => 'mysql', 'host' => '127.0.0.1', 'port' => 3306, 'database' => 'x', 'username' => 'u', 'password' => 'p'],
+        'database.default' => 'mysql_backup_test',
+        'backup.mysqldump' => PHP_BINARY, // 実際には実行しない(Process::fake)
+    ]);
+    Process::fake(function (PendingProcess $process) use ($help) {
+        $command = (array) $process->command;
+        if (in_array('--help', $command, true)) {
+            return Process::result($help);
+        }
+        // ダンプの代わりに、指定された出力先にSQLを書き出す
+        foreach ($command as $arg) {
+            if (str_starts_with($arg, '--result-file=')) {
+                file_put_contents(substr($arg, strlen('--result-file=')), '-- dump');
+            }
+        }
+
+        return Process::result();
+    });
+
+    $this->artisan('app:backup', ['--path' => $this->backupDir])->assertSuccessful();
+
+    Process::assertRan(fn (PendingProcess $process) => in_array('--single-transaction', (array) $process->command, true)
+        && in_array('--set-gtid-purged=OFF', (array) $process->command, true) === $expectsGtidOption);
+    $out = extractBackup(glob($this->backupDir.'/backup-*.zip')[0], $this->tmp.'/extracted');
+    expect(file_get_contents("$out/database.sql"))->toBe('-- dump');
+})->with([
+    // MySQL の mysqldump は --set-gtid-purged に対応している
+    'MySQL' => ['  --set-gtid-purged[=name]  Add \'SET @@GLOBAL.GTID_PURGED\' to the output.', true],
+    // MariaDB の mysqldump には無い(付けると不明なオプションのエラーになる)
+    'MariaDB' => ['  --gtid  Used together with --master-data=1 or --dump-slave=1.', false],
+]);
 
 test('毎日の自動バックアップは BACKUP_DAILY=true の時だけ深夜3時にスケジュールされる', function () {
     $backupEvent = fn () => collect(Schedule::events())

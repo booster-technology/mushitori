@@ -156,6 +156,12 @@ class BackupService
             $options .= 'host='.$quote($config['host'] ?? '127.0.0.1')."\n"
                 .'port='.(int) ($config['port'] ?? 3306)."\n";
         }
+        // MySQL の mysqldump は、GTID が OFF 以外(Amazon RDS の既定は OFF_PERMISSIVE)のサーバーでは
+        // --single-transaction でも FLUSH TABLES WITH READ LOCK を実行しようとし、RELOAD 権限の無いユーザーではダンプに失敗する。
+        // GTID の情報は復元に不要(別のサーバーに戻すと逆にエラーになる)なので出力しない。
+        // MariaDB の mysqldump にはこのオプションが無い(付けるとエラーになる)ため、使えるときだけ付ける
+        $gtidOption = $this->mysqldumpSupports($resolved, '--set-gtid-purged') ? ['--set-gtid-purged=OFF'] : [];
+
         file_put_contents($optionFile, $options);
         @chmod($optionFile, 0600);
 
@@ -168,6 +174,7 @@ class BackupService
                 '--routines',
                 '--triggers',
                 '--no-tablespaces', // 一般ユーザーでもダンプできるように(PROCESS権限が不要)
+                ...$gtidOption,
                 '--default-character-set=utf8mb4',
                 '--result-file='.$target,
                 (string) $config['database'],
@@ -181,6 +188,16 @@ class BackupService
         }
 
         return $target;
+    }
+
+    /**
+     * mysqldump がそのオプションに対応しているか(--help の一覧に載っているか)
+     */
+    private function mysqldumpSupports(string $binary, string $option): bool
+    {
+        $result = Process::timeout(30)->run([$binary, '--help']);
+
+        return $result->successful() && str_contains($result->output(), $option);
     }
 
     /**
