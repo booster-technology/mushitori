@@ -5,6 +5,7 @@
 @use('App\Enums\IssueStatus')
 @use('App\Services\AttachmentService')
 @use('App\Services\LoginCodeService')
+@use('App\Services\UserService')
 
 @section('content')
     @php($appName = config('app.name'))
@@ -190,7 +191,7 @@
                         <tbody>
                             <tr><td class="text-nowrap">課題の登録</td><td>プロジェクトの社内メンバー（いなければ社内全員）、担当者。社内メンバーがお客様の代わりに登録した場合は、起票者のお客様にも</td></tr>
                             <tr><td class="text-nowrap">コメント・状態の変更</td><td>起票した人、担当者、その課題にコメントしたことがある人。お客様が投稿した場合は、プロジェクトの社内メンバー（いなければ社内全員）にも</td></tr>
-                            <tr><td class="text-nowrap">ユーザーの作成</td><td>作成したユーザー本人（「ログイン案内メールを送る」にチェックした場合）</td></tr>
+                            <tr><td class="text-nowrap">ユーザーの作成</td><td>作成したユーザー本人（「ログイン案内メールを送る」にチェックした場合。編集画面から再送もできます）</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -205,6 +206,12 @@
 
                 <h3 class="mt-0">ログインできないようにする（退職・取引終了など）</h3>
                 <p>ユーザー管理でユーザーの <span class="help-ui btn btn-outline-secondary btn-sm"><i class="bi bi-pencil me-1"></i>編集</span> を開き、「状態」の「有効（ログインできる）」をオフにして更新します。ログイン中の場合も、次の操作でログアウトされます。登録した課題やコメントは残ります。</p>
+
+                <h3>ログイン案内メールを送り直す</h3>
+                <p>
+                    お客様が案内メールを削除してしまった・見つからない場合は、ユーザーの編集画面の <span class="help-ui btn btn-outline-primary btn-sm"><i class="bi bi-send me-1"></i>ログイン案内メールを再送する</span> から送り直せます（同じユーザーへは1時間に{{ UserService::LOGIN_GUIDE_RESENDS_PER_HOUR }}回まで。無効なユーザーには送れません）。
+                    パスワードは無いので、ログイン画面のURLを直接お伝えいただいてもログインできます。
+                </p>
 
                 <h3>ログインがロックされた場合</h3>
                 <p>

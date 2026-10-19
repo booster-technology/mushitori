@@ -55,4 +55,25 @@
             </div>
         </div>
     </form>
+
+    {{-- ログイン案内メールの再送(更新フォームとは別のフォームで送る) --}}
+    <div class="card shadow-sm border-0 form-narrow mt-3">
+        <div class="card-body d-flex flex-column flex-sm-row align-items-sm-center gap-2">
+            <div class="flex-grow-1">
+                <div class="fw-semibold"><i class="bi bi-envelope me-1"></i>ログイン案内メール</div>
+                <div class="small text-muted">
+                    ログイン画面のURLとログイン方法を、{{ $user->email }} 宛てに送ります。案内メールを削除してしまった場合などに使います（1時間に{{ \App\Services\UserService::LOGIN_GUIDE_RESENDS_PER_HOUR }}回まで）。
+                </div>
+            </div>
+            @if ($user->is_active)
+                <form method="POST" action="{{ route('staff.users.login-guide', $user) }}" class="flex-shrink-0"
+                      data-confirm="「{{ $user->name }}」（{{ $user->email }}）にログイン案内メールを送りますか？" data-confirm-ok="送信する">
+                    @csrf
+                    <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap"><i class="bi bi-send me-1"></i>ログイン案内メールを再送する</button>
+                </form>
+            @else
+                <div class="small text-muted flex-shrink-0">無効なユーザーには送れません</div>
+            @endif
+        </div>
+    </div>
 @endsection

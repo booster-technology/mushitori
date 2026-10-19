@@ -66,6 +66,15 @@ class NotificationService
     }
 
     /**
+     * ログイン案内の再送(社内メンバーがユーザー編集画面から送る)。
+     * 送れたかどうかを画面で伝えるため、送信エラーは握りつぶさずに呼び出し元へ返す
+     */
+    public function loginGuideResent(User $user): void
+    {
+        Mail::to($user)->send(new AccountCreatedMail($user, resent: true));
+    }
+
+    /**
      * 新規課題の通知を受け取る社内メンバー。
      * プロジェクトに社内メンバーが1人も登録されていない場合は、通知漏れを防ぐため社内全員に送る
      *

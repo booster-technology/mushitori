@@ -1,9 +1,17 @@
 <x-mail::message>
+@if ($resent)
+# ログインのご案内
+
+{{ mail_escape($user->name) }} 様
+
+{{ config('app.name') }} へのログイン方法をお送りします。
+@else
 # アカウントを作成しました
 
 {{ mail_escape($user->name) }} 様
 
 {{ config('app.name') }} のアカウントを作成しました。
+@endif
 @if ($user->isCustomer())
 不具合のご報告やご要望・ご質問は、こちらから画面のスクリーンショットを添えてご登録いただけます。
 @endif

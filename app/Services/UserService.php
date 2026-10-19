@@ -9,6 +9,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -18,6 +20,9 @@ class UserService
 {
     /** ユーザー一覧の1ページあたりの表示件数 */
     public const PER_PAGE = 20;
+
+    /** ログイン案内メールを再送できる回数(同じユーザーへ1時間あたり。誤操作・送り過ぎの防止) */
+    public const LOGIN_GUIDE_RESENDS_PER_HOUR = 3;
 
     public function __construct(
         private readonly NotificationService $notifications,
@@ -123,6 +128,38 @@ class UserService
         }
 
         return $user;
+    }
+
+    /**
+     * ログイン案内メールを再送する(お客様がメールを削除してしまった場合など)。
+     * 同じユーザーへの再送が上限に達している場合は送らずに false を返す。無効なユーザーには送らない(呼び出し元で確認する)
+     */
+    public function resendLoginGuide(User $user, User $actor): bool
+    {
+        $key = $this->loginGuideKey($user);
+        if (RateLimiter::tooManyAttempts($key, self::LOGIN_GUIDE_RESENDS_PER_HOUR)) {
+            return false;
+        }
+        // 送信に失敗した場合も1回と数える(失敗のたびに連打されないように)
+        RateLimiter::hit($key, 3600);
+
+        $this->notifications->loginGuideResent($user);
+        Log::info('ログイン案内メールを再送しました', ['user_id' => $user->id, 'actor_id' => $actor->id]);
+
+        return true;
+    }
+
+    /**
+     * ログイン案内メールを次に再送できるまでの分数
+     */
+    public function loginGuideRetryMinutes(User $user): int
+    {
+        return max(1, (int) ceil(RateLimiter::availableIn($this->loginGuideKey($user)) / 60));
+    }
+
+    private function loginGuideKey(User $user): string
+    {
+        return 'login-guide-resend:'.$user->id;
     }
 
     /**

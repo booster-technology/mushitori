@@ -3,6 +3,9 @@
 use App\Mail\AccountCreatedMail;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\UserService;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function () {
@@ -127,4 +130,71 @@ test('管理画面が表示できる', function () {
     $this->get('/staff/users')->assertOk()->assertSee($user->name);
     $this->get('/staff/users/create')->assertOk();
     $this->get("/staff/users/{$user->id}/edit")->assertOk();
+});
+
+test('ユーザーの編集画面からログイン案内メールを再送できる', function () {
+    $customer = User::factory()->customer()->create(['email' => 'hanako@example.com']);
+
+    $this->get("/staff/users/{$customer->id}/edit")->assertOk()->assertSee('ログイン案内メールを再送する');
+    $this->post("/staff/users/{$customer->id}/login-guide")
+        ->assertRedirect("/staff/users/{$customer->id}/edit")
+        ->assertSessionHas('success');
+
+    // 再送の件名・見出しは「ログインのご案内」。お客様用のログイン画面のURLが入っている
+    Mail::assertSent(AccountCreatedMail::class, function (AccountCreatedMail $mail) {
+        $html = $mail->render();
+
+        return $mail->hasTo('hanako@example.com')
+            && $mail->resent
+            && str_contains($mail->envelope()->subject, 'ログインのご案内')
+            && str_contains($html, url('/login'))
+            && ! str_contains($html, 'アカウントを作成しました');
+    });
+});
+
+test('ログイン案内メールの再送は、同じユーザーへ1時間に決まった回数まで', function () {
+    $customer = User::factory()->customer()->create();
+    $other = User::factory()->customer()->create();
+
+    foreach (range(1, UserService::LOGIN_GUIDE_RESENDS_PER_HOUR) as $i) {
+        $this->post("/staff/users/{$customer->id}/login-guide")->assertSessionHas('success');
+    }
+    $this->post("/staff/users/{$customer->id}/login-guide")->assertSessionHas('error');
+    Mail::assertSent(AccountCreatedMail::class, UserService::LOGIN_GUIDE_RESENDS_PER_HOUR);
+
+    // 別のユーザーへは送れる
+    $this->post("/staff/users/{$other->id}/login-guide")->assertSessionHas('success');
+
+    // 1時間たてば、また送れる
+    $this->travel(61)->minutes();
+    $this->post("/staff/users/{$customer->id}/login-guide")->assertSessionHas('success');
+});
+
+test('無効なユーザーにはログイン案内メールを再送できない', function () {
+    $customer = User::factory()->customer()->inactive()->create();
+
+    $this->get("/staff/users/{$customer->id}/edit")->assertOk()->assertDontSee('ログイン案内メールを再送する');
+    $this->post("/staff/users/{$customer->id}/login-guide")->assertSessionHas('error');
+    Mail::assertNothingSent();
+});
+
+test('メールの送信に失敗したら、送れたと表示せずにエラーにしてログに残す', function () {
+    $customer = User::factory()->customer()->create();
+    Mail::shouldReceive('to')->andThrow(new RuntimeException('SMTP接続エラー'));
+    Log::spy();
+
+    $this->post("/staff/users/{$customer->id}/login-guide")->assertSessionHas('error')->assertSessionMissing('success');
+
+    Log::shouldHaveReceived('error')->withArgs(fn ($message) => $message === 'ログイン案内メールの再送に失敗しました');
+});
+
+test('お客様はログイン案内メールを再送できない', function () {
+    $customer = User::factory()->customer()->create();
+    $target = User::factory()->customer()->create();
+    // 社内用のログイン(beforeEach)を外して、お客様だけがログインしている状態にする
+    Auth::guard('staff')->logout();
+    loginAs($customer);
+
+    $this->post("/staff/users/{$target->id}/login-guide")->assertRedirect();
+    Mail::assertNothingSent();
 });

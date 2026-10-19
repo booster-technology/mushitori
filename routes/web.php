@@ -89,6 +89,7 @@ Route::prefix(config('app.staff_path'))
             Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
             Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
             Route::post('/users/{user}/unlock', [UserController::class, 'unlock'])->name('users.unlock');
+            Route::post('/users/{user}/login-guide', [UserController::class, 'resendLoginGuide'])->name('users.login-guide');
 
             // ゴミ箱(削除したデータの確認・元に戻す・完全に削除)
             Route::get('/trash', [TrashController::class, 'index'])->name('trash.index');

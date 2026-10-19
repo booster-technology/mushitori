@@ -95,6 +95,31 @@ class UserController extends Controller
     }
 
     /**
+     * ログイン案内メール(ログイン画面のURLとログイン方法)を再送する
+     */
+    public function resendLoginGuide(Request $request, User $user): RedirectResponse
+    {
+        $back = redirect()->route('staff.users.edit', $user);
+
+        if (! $user->is_active) {
+            return $back->with('error', '無効なユーザーにはログイン案内メールを送れません。先に「有効」にして更新してください。');
+        }
+
+        try {
+            $sent = $this->users->resendLoginGuide($user, $request->user());
+        } catch (Throwable $e) {
+            return $this->failed($e, 'ログイン案内メールの再送に失敗しました');
+        }
+
+        if (! $sent) {
+            return $back->with('error', '同じユーザーへのログイン案内メールの再送は、1時間に'.UserService::LOGIN_GUIDE_RESENDS_PER_HOUR
+                .'回までです。約'.$this->users->loginGuideRetryMinutes($user).'分後に再送できます。');
+        }
+
+        return $back->with('success', "「{$user->name}」にログイン案内メールを送りました。");
+    }
+
+    /**
      * 認証コードの入力ミスによるログインのロックを解除する
      */
     public function unlock(Request $request, User $user): RedirectResponse
