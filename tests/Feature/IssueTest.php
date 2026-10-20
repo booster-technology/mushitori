@@ -428,3 +428,12 @@ test('通知メールに件名・本文のMarkdownリンクが埋め込まれな
             && str_contains($html, 'ログインはこちら');
     });
 });
+
+test('登録後のメッセージ欄は、課題詳細の本体と同じ幅にする', function () {
+    loginAs($this->customer);
+
+    $html = $this->followingRedirects()->post('/projects/WEB/issues', issuePayload())->assertOk()->getContent();
+
+    // メッセージ欄を、本体と同じ幅のクラス(issue-detail)で囲んでいる
+    expect($html)->toMatch('/<div class="issue-detail mx-auto">\s*<div class="alert alert-success/');
+});

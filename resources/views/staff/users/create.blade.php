@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'ユーザーの作成')
+@section('flash-width', 'form-narrow')
 
 @section('content')
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">

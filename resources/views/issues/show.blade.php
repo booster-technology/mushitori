@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', $issue->issueKey().' '.$issue->title)
+@section('flash-width', 'issue-detail mx-auto')
 
 @section('content')
     <div class="issue-detail mx-auto">

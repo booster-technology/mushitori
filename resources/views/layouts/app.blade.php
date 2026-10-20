@@ -74,7 +74,10 @@
     </nav>
 
     <main class="container-xl py-3 py-md-4">
-        @include('partials.flash')
+        {{-- メッセージ欄の幅は、本体の幅を絞っている画面では本体に揃える(各画面の @section('flash-width', 'クラス名')) --}}
+        <div class="@yield('flash-width')">
+            @include('partials.flash')
+        </div>
         @yield('content')
     </main>
 
