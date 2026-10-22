@@ -79,15 +79,45 @@ test('プロジェクトに社内メンバーがいない場合は、通知漏�
     Mail::assertNotSent(IssueCreatedMail::class, fn ($mail) => $mail->hasTo('inactive@example.com'));
 });
 
-test('お客様は担当者・期限日を指定できない(送っても無視される)', function () {
+test('お客様も登録時に担当者・期限日を指定でき、担当者に通知される', function () {
+    $assignee = User::factory()->staff()->create(['name' => '指名 太郎']);
     loginAs($this->customer);
+
+    // 課題の追加画面に、社内メンバー全員が担当者の選択肢として出る
+    $this->get('/projects/WEB/issues/create')->assertOk()
+        ->assertSee('name="assignee_id"', false)
+        ->assertSee('指名 太郎')
+        ->assertSee('name="due_date"', false)
+        ->assertDontSee('name="reporter_id"', false);
+
     $this->post('/projects/WEB/issues', issuePayload([
-        'assignee_id' => $this->staff->id,
+        'assignee_id' => $assignee->id,
         'due_date' => '2030-01-01',
-    ]));
+    ]))->assertRedirect('/issues/WEB-1');
+
+    $issue = Issue::first();
+    expect($issue->assignee_id)->toBe($assignee->id)
+        ->and($issue->due_date->format('Y-m-d'))->toBe('2030-01-01');
+    Mail::assertSent(IssueCreatedMail::class, fn ($mail) => $mail->hasTo($assignee->email));
+});
+
+test('お客様が担当者・期限日を指定しなくても登録できる(未設定のまま)', function () {
+    loginAs($this->customer);
+    $this->post('/projects/WEB/issues', issuePayload(['assignee_id' => '', 'due_date' => '']))->assertRedirect('/issues/WEB-1');
 
     $issue = Issue::first();
     expect($issue->assignee_id)->toBeNull()->and($issue->due_date)->toBeNull();
+});
+
+test('お客様も担当者にお客様や無効な社内メンバーは指定できない', function () {
+    loginAs($this->customer);
+    $inactiveStaff = User::factory()->staff()->inactive()->create();
+
+    $this->post('/projects/WEB/issues', issuePayload(['assignee_id' => $this->customer->id]))
+        ->assertSessionHasErrors('assignee_id');
+    $this->post('/projects/WEB/issues', issuePayload(['assignee_id' => $inactiveStaff->id]))
+        ->assertSessionHasErrors('assignee_id');
+    expect(Issue::count())->toBe(0);
 });
 
 test('社内メンバーは担当者・期限日を指定して登録でき、担当者に通知される', function () {

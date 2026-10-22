@@ -53,9 +53,9 @@ class IssueService
                     'reporter_id' => $reporterId,
                     // 代わりに登録した人(本人が登録した場合は記録しない)
                     'registered_by' => $reporterId !== $actor->id ? $actor->id : null,
-                    // 担当者・期限日は社内メンバーのみ設定できる
-                    'assignee_id' => $actor->isStaff() ? ($data['assignee_id'] ?? null) : null,
-                    'due_date' => $actor->isStaff() ? ($data['due_date'] ?? null) : null,
+                    // 担当者・期限日は、お客様も登録時に指定できる(任意。登録後の変更は社内メンバーのみ)
+                    'assignee_id' => $data['assignee_id'] ?? null,
+                    'due_date' => $data['due_date'] ?? null,
                 ]);
 
                 foreach ($files as $file) {

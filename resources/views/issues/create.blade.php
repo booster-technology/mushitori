@@ -83,25 +83,28 @@
                                     <div class="form-text">電話・メールで受けた内容は、お客様を選ぶとお客様の課題として登録され、対応の経過がお客様にもメールで届きます。</div>
                                 </div>
                             @endif
-                            <div class="mb-3">
-                                <label for="assignee_id" class="form-label fw-semibold">担当者</label>
-                                <select id="assignee_id" name="assignee_id" class="form-select @error('assignee_id') is-invalid @enderror">
-                                    <option value="">未設定</option>
-                                    @foreach ($staffUsers as $staff)
-                                        <option value="{{ $staff->id }}" @selected((string) old('assignee_id') === (string) $staff->id)>{{ $staff->name }}</option>
-                                    @endforeach
-                                </select>
-                                @error('assignee_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                            <div class="mb-3">
-                                <label for="due_date" class="form-label fw-semibold">期限日</label>
-                                <input type="date" id="due_date" name="due_date" value="{{ old('due_date') }}"
-                                       class="form-control @error('due_date') is-invalid @enderror">
-                                @error('due_date')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                        @else
-                            <p class="small text-muted mb-3">担当者・期限日は弊社にて設定します。</p>
                         @endif
+
+                        {{-- 担当者・期限日は、お客様も登録時に指定できる(任意) --}}
+                        <div class="mb-3">
+                            <label for="assignee_id" class="form-label fw-semibold">担当者</label>
+                            <select id="assignee_id" name="assignee_id" class="form-select @error('assignee_id') is-invalid @enderror">
+                                <option value="">未設定</option>
+                                @foreach ($staffUsers as $staff)
+                                    <option value="{{ $staff->id }}" @selected((string) old('assignee_id') === (string) $staff->id)>{{ $staff->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('assignee_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="mb-3">
+                            <label for="due_date" class="form-label fw-semibold">期限日</label>
+                            <input type="date" id="due_date" name="due_date" value="{{ old('due_date') }}"
+                                   class="form-control @error('due_date') is-invalid @enderror">
+                            @error('due_date')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            @if (portal() !== 'staff')
+                                <div class="form-text">ご希望の期限があれば指定してください（任意）。</div>
+                            @endif
+                        </div>
 
                         <button type="submit" class="btn btn-primary btn-lg w-100">
                             <i class="bi bi-send me-1"></i>登録する
